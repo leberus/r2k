@@ -7,6 +7,9 @@
 
 static char R2_TYPE = 'k';
 
+#define READ_KERNEL_MEMORY	0x1
+#define WRITE_KERNEL_MEMORY	0x2
+
 static struct cdev *r2_dev;
 static dev_t dev;
 static char *r2_devname = "r2";
@@ -39,9 +42,9 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 
 	len = data->len;
 
-	switch (_IOC_DIR (cmd)) {
+	switch (_IOC_NR (cmd)) {
 
-	case _IOC_READ:
+	case READ_KERNEL_MEMORY:
 
 		if (data->addr < PAGE_OFFSET) {
 			pr_info ("%s: error - 0x%lx belongs to USERSPACE\n", r2_devname, (unsigned long)data->addr);
@@ -62,6 +65,7 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 
 		break;
 	default:
+		pr_info ("%s: operation not implemented\n", r2_devname);
 		ret = -EINVAL;
 		break;
 	}

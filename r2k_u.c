@@ -5,11 +5,17 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+
 struct r2k_data {
         unsigned long *addr;
         unsigned long len;
         unsigned long *buff;
 };
+
+static char R2_TYPE = 'k';
+
+#define READ_KERNEL_MEMORY	_IOR (R2_TYPE, 0x1, sizeof (struct r2k_data))
+#define WRITE_KERNEL_MEMORY	_IOR (R2_TYPE, 0x2, sizeof (struct r2k_data))
 
 
 int main(int argc, char **argv)
@@ -38,7 +44,8 @@ int main(int argc, char **argv)
 	data.len = sizeof (unsigned long) * n_words;
 	printf ("Number of words to take: %d\n", data.len / (sizeof(void *)));
 	
-	ioctl_n = _IOR ('k', 1, struct r2k_data);
+	ioctl_n = WRITE_KERNEL_MEMORY;
+	//ioctl_n = READ_KERNEL_MEMORY;
 	ret = ioctl (fd, ioctl_n, &data);
 
 	printf ("Got the state: addr: 0x%lx - value: ", data.addr);
