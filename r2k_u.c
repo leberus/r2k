@@ -99,6 +99,7 @@ int main(int argc, char **argv)
 			break;
 		case 'o':
 			output = *optarg == 'h'  ? HEX : CHAR;
+			break;
 		default:
 			printf ("%s: arg %s not valid\n", prog_name, optarg);
 			break;
@@ -150,6 +151,7 @@ int main(int argc, char **argv)
 		
 		ioctl_n = IOCTL_WRITE_KERNEL_MEMORY;
 		ret = ioctl (fd, ioctl_n, &data); 
+		fprintf (stderr, "ioctl err: %s\n", strerror (errno));
 		break;
 
 	case READ_LINEAR_ADDR:

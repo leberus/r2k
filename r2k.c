@@ -11,18 +11,10 @@
 #include <asm/uaccess.h>
 #include <asm/highmem.h>
 
-#define PTE_CHECK_BIT(x)	(_AT(pteval_t, 1) << x)
-
 /*
 	search how the modules are being loaded
 */
 
-
-/*
-
-	static inline int pte_write(pte_t pte) { return pte_val(pte) & _PAGE_WRITABLE; }
-
-*/
 
 static char R2_TYPE = 'k';
 
@@ -59,15 +51,19 @@ static int io_close (struct inode *inode, struct file *file)
 	return 0;
 }
 
+static unsigned int pte_check_bit (pte_t *pte, int bit)
+{
+	return (pte_val (*pte) & bit);
+}
+
 static unsigned int addr_is_mapped (unsigned long addr)
 {
 	pte_t *pte;
 	unsigned int level;
 
 	pte = lookup_address (addr, &level);
-	if (pte) {
-		return (pte_val (*pte) & _PAGE_PRESENT);
-	}
+	if (pte) 
+		return pte_check_bit (pte, _PAGE_PRESENT);
 
 	pr_info ("%s: addr_is_mapped - pte_null\n", r2_devname);
 	return 0;
@@ -79,9 +75,8 @@ static unsigned int addr_is_writeable (unsigned long addr)
 	unsigned int level;
 
 	pte = lookup_address (addr, &level);
-	if (pte) {
-		return (pte_val (*pte) & _PAGE_RW);
-	}
+	if (pte) 
+		return pte_check_bit (pte, _PAGE_RW);
 
 	pr_info ("%s: pte == null\n", r2_devname);
 	return 0;
@@ -166,13 +161,17 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 		break; 
 
 	case IOCTL_READ_LINEAR_ADDR:
-		pr_info ("%s: IOCTL_READ_LINEAR_ADDR on 0x%lx from pid, %d bytes (%ld)\n", r2_devname, data->addr, data->pid, data->len);
+		pr_info ("%s: IOCTL_READ_LINEAR_ADDR on 0x%lx from pid (%d) bytes (%ld)\n", r2_devname, data->addr, data->pid, data->len);
 
-		struct page *pg;
 		struct task_struct *task;
 		struct vm_area_struct *vma;
-		void *kaddr;
-		
+		unsigned long next_addr_aligned;
+		int nr_pages;
+		int page_i;
+		void __user *buffer_r;
+
+		buffer_r = data->buff;
+
 		task = pid_task (find_vpid (data->pid), PIDTYPE_PID);
 		if (!task) {
 			pr_info ("%s: could not retrieve task_struct from pid (%d)\n", r2_devname, data->pid);
@@ -181,37 +180,78 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 		}
 
 		vma = find_vma (task->mm, data->addr);
-		if (vma) {
-			pr_info ("%s: vma->addr - 0x%lx\n", r2_devname, vma->vm_start);
-		}
-
-		down_read (&task->mm->mmap_sem);
-		ret = get_user_pages (task, task->mm, data->addr, 1, 0, 0, &pg, NULL);
-		if (!ret) {
-			pr_info ("%s: could not retrieve page from pid (%d)\n", r2_devname, data->pid);
-			ret = -ESRCH;
-			return ret;
-		}
-
-		kaddr = kmap (pg);
-		if (!kaddr) {
-			pr_info ("%s: could not map the page from pid (%d)\n", r2_devname, data->pid);
-			up_read (&task->mm->mmap_sem);
-			ret = -ESRCH;
-			return ret;
-		}
-
-		pr_info ("%s: kaddr : 0x%p\n", r2_devname, kaddr);
-		ret = copy_to_user (data->buff, kaddr + (data->addr - vma->vm_start), len);
-		if (ret) {
-			up_read (&task->mm->mmap_sem);
-			pr_info ("%s: copy_to_user failed\n", r2_devname);
+		if (!vma) {
+			pr_info ("%s: could not retrieve a vm_area_struct struct from 0x%lx\n", r2_devname, data->addr);
 			ret = -EFAULT;
 			return ret;
 		}
+			
+		pr_info ("%s: vma->vm_start - vma->vm_end, 0x%lx - 0x%lx\n", r2_devname, vma->vm_start, vma->vm_end);
+
+		if (data->addr + len > vma->vm_end) {
+			pr_info ("%s: 0x%lx + %ld bytes goes beyond valid addresses. bytes recalculated to %ld bytes\n", 
+								r2_devname, data->addr, data->len, vma->vm_end - data->addr);
+			len = vma->vm_end - data->addr;
+		}
+		
+		next_addr_aligned = PAGE_ALIGN (data->addr);
+		if (data->addr & (PAGE_SIZE - 1)) {
+			if (data->addr + len > next_addr_aligned) {
+				/* calcular les pagines */
+				nr_pages = (len / PAGE_SIZE) + 1;
+			} else
+				nr_pages = 1;
+		} else {
+			/* addr aligned */
+			nr_pages = (len & (len - 1)) ? len / PAGE_SIZE + 1 : len / PAGE_SIZE;
+		}
+			
+		pr_info ("%s: nr pages %d\n", r2_devname, nr_pages);		
+
+		down_read (&task->mm->mmap_sem);
+		for (page_i = 0 ; page_i < nr_pages ; page_i++ ) {
+
+			struct page *pg;
+			void *kaddr;
+			unsigned long start_addr;
+			int bytes;
+
+			ret = get_user_pages (task, task->mm, data->addr, 1, 0, 0, &pg, NULL);
+			if (!ret) {
+				pr_info ("%s: could not retrieve page from pid (%d)\n", r2_devname, data->pid);
+				ret = -ESRCH;
+				return ret;
+			}
+		
+			start_addr = next_addr_aligned - PAGE_SIZE;
+			if (len > (next_addr_aligned - data->addr))
+				bytes = next_addr_aligned - data->addr;
+			else
+				bytes = len;
+
+			kaddr = kmap (pg);
+			pr_info ("%s: kaddr : 0x%p\n", r2_devname, kaddr);
+			pr_info ("%s: data->addr - start_addr: 0x%lx\n", r2_devname, data->addr - start_addr);
+			pr_info ("%s: bytes: %d\n", r2_devname, bytes);
+			pr_info ("%s: data->buff: 0x%lx\n", r2_devname, (unsigned long)data->buff);
+
+			ret = copy_to_user (buffer_r, kaddr + (data->addr - start_addr), bytes);
+			if (ret) {
+				up_read (&task->mm->mmap_sem);
+				pr_info ("%s: copy_to_user failed\n", r2_devname);
+				ret = -EFAULT;
+				return ret;
+			}
+
+			buffer_r += bytes;
+			data->addr = next_addr_aligned;
+			next_addr_aligned += PAGE_SIZE;
+			len -= bytes;
+
+			page_cache_release (pg);
+		}
+		up_read (&task->mm->mmap_sem);
 	
-		page_cache_release (pg);
-		up_read (&task->mm->mmap_sem);		
 		break;
 
 	default:
