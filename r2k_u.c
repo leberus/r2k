@@ -90,12 +90,20 @@ int main(int argc, char **argv)
 			break;
 		case 'i':
 			n_ioctl = atoi (optarg);
+			if (n_ioctl < 1 || n_ioctl > 8) {
+				printf ("ioctl from 1 to 8\n");
+				exit (-1);
+			}
 			break;
 		case 'b':
 			n_bytes = atoi (optarg);
 			break;
 		case 'w':
+			printf ("str = optarg\n");
 			str = optarg;
+			printf ("str = optarg\n");
+			n_bytes = strlen (str);
+			printf ("str = optarg\n");
 		case 'p':
 			data.pid = atoi (optarg);
 			break;
@@ -146,8 +154,9 @@ int main(int argc, char **argv)
 
 	case WRITE_KERNEL_MEMORY:
 
-		data.buff = &c;
-		data.len = 1;
+		data.buff = (unsigned char *)calloc (n_bytes, 1);
+		data.len = n_bytes;
+		strncpy (data.buff, str, data.len);
 
 		printf ("data.buff: %x\n", *data.buff);	
 		
