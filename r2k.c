@@ -65,12 +65,11 @@ static unsigned int addr_is_mapped (unsigned long addr)
 	if (pte) 
 		return pte_check_bit (pte, _PAGE_PRESENT);
 
-	pr_info ("%s: addr_is_mapped - pte_null\n", r2_devname);
+	pr_info ("%s: pte == null\n", r2_devname);
 	return 0;
 }
 
-static unsigned int addr_is_writeable (unsigned long addr)
-{
+static unsigned int addr_is_writeable (unsigned long addr){
 	pte_t *pte;
 	unsigned int level;
 
@@ -95,9 +94,33 @@ static void check_vmalloc_addr (unsigned long addr)
 		pr_info ("%s: 0x%lx does not belong to vmalloc\n", r2_devname, addr);
 }
 
+static int get_nr_pages (unsigned long addr, unsigned long next_addr_aligned, unsigned long len)
+{
+	int nr_pages;
+
+	if (data->addr & (PAGE_SIZE - 1)) {
+		if (data->addr + len > next_addr_aligned) 
+			nr_pages = len < PAGE_SIZE ? (len / PAGE_SIZE) + 2 : (len / PAGE_SIZE) + 1;
+		else
+			nr_pages = 1;
+	} else {
+		/* addr aligned */
+		nr_pages = (len & (len - 1)) ? len / PAGE_SIZE + 1 : len / PAGE_SIZE;
+	}
+
+	pr_info ("%s: nr pages %d\n", r2_devname, nr_pages);		
+	return nr_pages;
+}
+
 static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_addr)
 {
 	struct r2k_data __user *data = (struct r2k_data __user *)data_addr;
+	struct task_struct *task;
+	struct vm_area_struct *vma;
+	int nr_pages;
+	int pages_i;
+	void __user *buffer_r;
+	
 	unsigned long len;
 	int ret = 0;
 
@@ -161,14 +184,9 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 		break; 
 
 	case IOCTL_READ_LINEAR_ADDR:
-		pr_info ("%s: IOCTL_READ_LINEAR_ADDR on 0x%lx from pid (%d) bytes (%ld)\n", r2_devname, data->addr, data->pid, data->len);
+	case IOCTL_WRITE_LINEAR_ADDR:
 
-		struct task_struct *task;
-		struct vm_area_struct *vma;
-		unsigned long next_addr_aligned;
-		int nr_pages;
-		int page_i;
-		void __user *buffer_r;
+		pr_info ("%s: IOCTL_READ/WRITE_LINEAR_ADDR on 0x%lx from pid (%d) bytes (%ld)\n", r2_devname, data->addr, data->pid, data->len);
 
 		buffer_r = data->buff;
 
@@ -189,31 +207,19 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 		pr_info ("%s: vma->vm_start - vma->vm_end, 0x%lx - 0x%lx\n", r2_devname, vma->vm_start, vma->vm_end);
 
 		if (data->addr + len > vma->vm_end) {
-			pr_info ("%s: 0x%lx + %ld bytes goes beyond valid addresses. bytes recalculated to %ld bytes\n", 
-								r2_devname, data->addr, data->len, vma->vm_end - data->addr);
+			pr_info ("%s: 0x%lx + %ld bytes goes beyond valid addresses. bytes recalculated to %ld bytes\n", r2_devname, data->addr, data->len, vma->vm_end - data->addr);
 			len = vma->vm_end - data->addr;
 		}
 		
-		next_addr_aligned = PAGE_ALIGN (data->addr);
-		if (data->addr & (PAGE_SIZE - 1)) {
-			if (data->addr + len > next_addr_aligned) {
-				/* calcular les pagines */
-				nr_pages = (len / PAGE_SIZE) + 1;
-			} else
-				nr_pages = 1;
-		} else {
-			/* addr aligned */
-			nr_pages = (len & (len - 1)) ? len / PAGE_SIZE + 1 : len / PAGE_SIZE;
-		}
+		unsigned long next_addr_aligned = PAGE_ALIGN (data->addr);
+		nr_pages = get_nr_pages (data->addr, next_addr_aligned, len);
 			
-		pr_info ("%s: nr pages %d\n", r2_devname, nr_pages);		
-
 		down_read (&task->mm->mmap_sem);
 		for (page_i = 0 ; page_i < nr_pages ; page_i++ ) {
 
 			struct page *pg;
-			void *kaddr;
 			unsigned long start_addr;
+			void *kaddr;
 			int bytes;
 
 			ret = get_user_pages (task, task->mm, data->addr, 1, 0, 0, &pg, NULL);
@@ -230,15 +236,19 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 				bytes = len;
 
 			kaddr = kmap (pg);
-			pr_info ("%s: kaddr : 0x%p\n", r2_devname, kaddr);
-			pr_info ("%s: data->addr - start_addr: 0x%lx\n", r2_devname, data->addr - start_addr);
-			pr_info ("%s: bytes: %d\n", r2_devname, bytes);
-			pr_info ("%s: data->buff: 0x%lx\n", r2_devname, (unsigned long)data->buff);
+			pr_info ("%s: kaddr 0x%p\n", r2_devname, kaddr);
+			if (!addr_is_mapped ( (unsigned long)kaddr)) 
+                        	pr_info ("%s: addr is not mapped, triggering a fault\n", r2_devname);
+		
+			if (_IOC_NR (cmd) == IOCTL_READ_LINEAR_ADDR)
+				ret = copy_to_user (buffer_r, kaddr + (data->addr - start_addr), bytes);
+			else
+				ret = copy_from_user (kaddr + (data->addr - start_addr), buffer_r,  bytes);
 
-			ret = copy_to_user (buffer_r, kaddr + (data->addr - start_addr), bytes);
 			if (ret) {
 				up_read (&task->mm->mmap_sem);
 				pr_info ("%s: copy_to_user failed\n", r2_devname);
+				page_cache_release (pg);
 				ret = -EFAULT;
 				return ret;
 			}
@@ -251,7 +261,38 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 			page_cache_release (pg);
 		}
 		up_read (&task->mm->mmap_sem);
+		break;
+
+	case IOCTL_READ_PHYSICAL_ADDR:
+
+		pr_info ("%s: IOCTL_READ_PHYSICAL_ADDR on 0x%lx\n", r2_devname, data->addr);
 	
+		struct page *pg;
+		void *kaddr;
+
+		pg = pfn_to_page (data->addr >> PAGE_SHIFT);
+		kaddr = kmap(pg) + (data->addr & (~PAGE_MASK));
+		pr_info ("%s: kaddr: 0x%p\n", r2_devname, kaddr - (data->addr & (~PAGE_MASK)));
+		if (!kaddr) {
+			pr_info ("%s: kmap returned an error\n", r2_devname);
+			ret = -EFAULT;
+			return ret;
+		}
+
+		ret = copy_to_user (data->buff, kaddr, len);
+		if (ret) {
+			pr_info ("%s: copy_to_user failed\n", r2_devname);
+                        ret = -EFAULT;
+                        return ret;
+		}
+		kunmap (pg);
+
+
+		pg = pfn_to_page ((data->addr + 4096) >> PAGE_SHIFT);
+		kaddr = kmap(pg);
+		pr_info ("%s: kaddr: 0x%p\n", r2_devname, kaddr);
+		kunmap (pg);
+
 		break;
 
 	default:

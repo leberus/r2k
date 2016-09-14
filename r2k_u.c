@@ -73,10 +73,12 @@ int main(int argc, char **argv)
 	struct r2k_data data;
 	unsigned char c = 98;
 	char *p;
+	char *str;
 	int output;
 
 	data.addr = data.pid = data.len = 0;
 	prog_name = argv[0];
+	output = HEX;
 
 	if (argc < 4)
 		print_help();
@@ -93,7 +95,7 @@ int main(int argc, char **argv)
 			n_bytes = atoi (optarg);
 			break;
 		case 'w':
-			data.buff = optarg;
+			str = optarg;
 		case 'p':
 			data.pid = atoi (optarg);
 			break;
@@ -174,7 +176,43 @@ int main(int argc, char **argv)
 		}
 
 		break;
-		
+
+	case WRITE_LINEAR_ADDR:
+
+		data.buff = (unsigned char *)calloc (n_bytes, 1);
+		data.len = n_bytes;
+		strncpy (data.buff, str, data.len);
+	
+		printf ("Writing %d bytes at 0x%lx from pid (%d)\n", data.len, data.addr, data.pid);
+		printf ("Str: %s\n", data.buff);
+
+		ioctl_n = IOCTL_WRITE_LINEAR_ADDR;
+		ret = ioctl (fd, ioctl_n, &data);
+		printf ("ret: %d\n", ret);
+		fprintf (stderr, "ioctl err: %s\n", strerror (errno));
+		break;
+
+	case READ_PHYSICAL_ADDR:
+
+		data.buff = (unsigned char *)calloc (n_bytes, 1);
+		data.len = n_bytes;
+
+		printf ("Reading %d bytes at 0x%lx from pid (%d)\n", data.len, data.addr, data.pid);
+	
+		ioctl_n = IOCTL_READ_PHYSICAL_ADDR;
+		ret = ioctl (fd, ioctl_n, &data);
+		printf ("ret: %d\n", ret);
+		fprintf (stderr, "ioctl err: %s\n", strerror (errno));
+
+		if (!ret) {
+                        printf ("Got the state: addr: 0x%lx - value: ", data.addr);
+                        for (i = 0; i < n_bytes; i++) {
+                                printf (output == HEX ? HEX_FMT : CHAR_FMT, data.buff[i]);
+                        }
+                }
+	
+		break;
+
 	default:
 		printf ("ioctl not implemented\n");
 		break;
