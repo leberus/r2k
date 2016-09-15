@@ -94,37 +94,47 @@ static void check_vmalloc_addr (unsigned long addr)
 		pr_info ("%s: 0x%lx does not belong to vmalloc\n", r2_devname, addr);
 }
 
-static int get_nr_pages (unsigned long addr, unsigned long next_addr_aligned, unsigned long len)
+static int get_nr_pages (unsigned long addr, unsigned long next_addr_aligned, 
+							unsigned long len)
 {
 	int nr_pages;
 
 	if (addr & (PAGE_SIZE - 1)) {
+		pr_info ("%s: addr not aligned\n", r2_devname);
 		if (addr + len > next_addr_aligned) 
-			nr_pages = len < PAGE_SIZE ? (len / PAGE_SIZE) + 2 : (len / PAGE_SIZE) + 1;
+			nr_pages = len < PAGE_SIZE 
+					? (len / PAGE_SIZE) + 2 
+					: (len / PAGE_SIZE) + 1;
 		else
 			nr_pages = 1;
 	} else {
 		pr_info ("%s: addr aligned\n", r2_devname);
-		/* addr aligned */
 		if (len & (PAGE_SIZE - 1))
 			pr_info ("not aligned\n");
-		else
+		else 
 			pr_info ("aligned\n");
-		nr_pages = (len & (PAGE_SIZE - 1)) ? len / PAGE_SIZE + 1 : len / PAGE_SIZE;
+		 nr_pages = (len & (PAGE_SIZE - 1)) 
+				? len / PAGE_SIZE + 1 
+				: len / PAGE_SIZE;
 	}
 
 	pr_info ("%s: nr pages %d\n", r2_devname, nr_pages);		
 	return nr_pages;
 }
 
-static inline int get_bytes_to_read (unsigned long addr, unsigned long next_addr_aligned, unsigned long len)
+static inline int get_bytes_to_read (unsigned long addr, unsigned long len,
+						unsigned long next_addr_aligned)
 {
-	return (len > (next_addr_aligned - addr)) ? next_addr_aligned - addr : len;
+	return (len > (next_addr_aligned - addr)) 
+			? next_addr_aligned - addr 
+			: len;
 }
 
 static unsigned long get_next_aligned_addr (unsigned long addr)
 {
-	return (addr & (PAGE_SIZE - 1)) ? PAGE_ALIGN (addr) : addr + PAGE_SIZE;
+	return (addr & (PAGE_SIZE - 1)) 
+			? PAGE_ALIGN (addr) 
+			: addr + PAGE_SIZE;
 }
 
 static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_addr)
@@ -149,10 +159,12 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 
 	case IOCTL_READ_KERNEL_MEMORY:
 		
-		pr_info ("%s: IOCTL_READ_KERNEL_MEMORY on 0x%lx\n", r2_devname, data->addr);
+		pr_info ("%s: IOCTL_READ_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
+								data->addr);
 	
 		if (!check_kernel_addr (data->addr)) {
-			pr_info ("%s: 0x%lx invalid addr\n", r2_devname, data->addr);
+			pr_info ("%s: 0x%lx invalid addr\n", r2_devname, 
+								data->addr);
 			ret = -EFAULT;
 			return ret;
 		}
@@ -176,16 +188,19 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 
 	case IOCTL_WRITE_KERNEL_MEMORY:
 
-		pr_info ("%s: IOCTL_WRITE_KERNEL_MEMORY on 0x%lx\n", r2_devname, data->addr);
+		pr_info ("%s: IOCTL_WRITE_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
+								data->addr);
 
 		if (!check_kernel_addr (data->addr)) {
-			pr_info ("%s: 0x%lx invalid addr\n", r2_devname, data->addr);
+			pr_info ("%s: 0x%lx invalid addr\n", r2_devname, 
+								data->addr);
 			ret = -EFAULT;
 			return ret;
 		}	
 
 		if (!addr_is_writeable (data->addr)) {
-			pr_info ("%s: cannot write at addr 0x%lx\n", r2_devname, data->addr);
+			pr_info ("%s: cannot write at addr 0x%lx\n", r2_devname, 
+								data->addr);
 			ret = -EPERM;
 			return ret;
 		}
@@ -202,34 +217,50 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 	case IOCTL_READ_LINEAR_ADDR:
 	case IOCTL_WRITE_LINEAR_ADDR:
 
-		pr_info ("%s: IOCTL_READ/WRITE_LINEAR_ADDR on 0x%lx from pid (%d) bytes (%ld)\n", r2_devname, data->addr, data->pid, data->len);
+		pr_info ("%s: IOCTL_READ/WRITE_LINEAR_ADDR at 0x%lx" 
+						"from pid (%d) bytes (%ld)\n", 
+						r2_devname, data->addr, 
+						data->pid, data->len);
 
 		buffer_r = data->buff;
 
 		task = pid_task (find_vpid (data->pid), PIDTYPE_PID);
 		if (!task) {
-			pr_info ("%s: could not retrieve task_struct from pid (%d)\n", r2_devname, data->pid);
+			pr_info ("%s: could not retrieve task_struct" 
+							"from pid (%d)\n", 
+							r2_devname, data->pid);
 			ret = -ESRCH;
 			return ret;
 		}
 
 		vma = find_vma (task->mm, data->addr);
 		if (!vma) {
-			pr_info ("%s: could not retrieve a vm_area_struct struct from 0x%lx\n", r2_devname, data->addr);
+			pr_info ("%s: could not retrieve vm_area_struct" 
+								"at 0x%lx\n", 
+						r2_devname, data->addr);
 			ret = -EFAULT;
 			return ret;
 		}
 			
-		pr_info ("%s: vma->vm_start - vma->vm_end, 0x%lx - 0x%lx\n", r2_devname, vma->vm_start, vma->vm_end);
+		pr_info ("%s: vma->vm_start - vma->vm_end, 0x%lx - 0x%lx\n", 
+						r2_devname, vma->vm_start, 
+								vma->vm_end);
 
 		if (data->addr + len > vma->vm_end) {
-			pr_info ("%s: 0x%lx + %ld bytes goes beyond valid addresses. bytes recalculated to %ld bytes\n", r2_devname, data->addr, data->len, vma->vm_end - data->addr);
+			pr_info ("%s: 0x%lx + %ld bytes goes beyond" 
+					"valid addresses. bytes recalculated to"
+								"%ld bytes\n", 
+								r2_devname, 
+								data->addr, 
+								data->len, 
+						vma->vm_end - data->addr);
 			len = vma->vm_end - data->addr;
 		}
 		
 		next_addr_aligned = get_next_aligned_addr (data->addr);
 		nr_pages = get_nr_pages (data->addr, next_addr_aligned, len);
-		pr_info ("%s: next_addr_aligned 0x%lx\n", r2_devname, next_addr_aligned);
+		pr_info ("%s: next_addr_aligned 0x%lx\n", r2_devname, 
+							next_addr_aligned);
 			
 		down_read (&task->mm->mmap_sem);
 		for (page_i = 0 ; page_i < nr_pages ; page_i++ ) {
@@ -239,31 +270,30 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 			void *kaddr;
 			int bytes;
 
-			ret = get_user_pages (task, task->mm, data->addr, 1, 0, 0, &pg, NULL);
+			ret = get_user_pages (task, task->mm, data->addr, 1, 
+									0, 
+									0, 
+								&pg, NULL);
 			if (!ret) {
-				pr_info ("%s: could not retrieve page from pid (%d)\n", r2_devname, data->pid);
+				pr_info ("%s: could not retrieve page"
+							"from pid (%d)\n", 
+							r2_devname, data->pid);
 				ret = -ESRCH;
 				return ret;
 			}
 
-//			bytes = get_bytes_to_read (data->addr, next_addr_aligned, len);
-		
-			start_addr = next_addr_aligned - PAGE_SIZE;
-			if (len > (next_addr_aligned - data->addr))
-				bytes = next_addr_aligned - data->addr;
-			else
-				bytes = len;
-
-			kaddr = kmap (pg);
+			bytes = get_bytes_to_read (data->addr, len, next_addr_aligned);
+			kaddr = kmap (pg) + (data->addr & (~PAGE_MASK));;
 			pr_info ("%s: kaddr 0x%p\n", r2_devname, kaddr);
 			pr_info ("%s: reading %d bytes\n", r2_devname, bytes);
+
 			if (!addr_is_mapped ( (unsigned long)kaddr)) 
                         	pr_info ("%s: addr is not mapped, triggering a fault\n", r2_devname);
 		
 			if (_IOC_NR (cmd) == IOCTL_READ_LINEAR_ADDR)
-				ret = copy_to_user (buffer_r, kaddr + (data->addr - start_addr), bytes);
+				ret = copy_to_user (buffer_r, kaddr, bytes);
 			else
-				ret = copy_from_user (kaddr + (data->addr - start_addr), buffer_r,  bytes);
+				ret = copy_from_user (kaddr, buffer_r,  bytes);
 
 			if (ret) {
 				up_read (&task->mm->mmap_sem);
@@ -280,12 +310,14 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 
 			page_cache_release (pg);
 		}
+
 		up_read (&task->mm->mmap_sem);
 		break;
 
 	case IOCTL_READ_PHYSICAL_ADDR:
 
-		pr_info ("%s: IOCTL_READ_PHYSICAL_ADDR on 0x%lx\n", r2_devname, data->addr);
+		pr_info ("%s: IOCTL_READ_PHYSICAL_ADDR on 0x%lx\n", r2_devname, 
+								data->addr);
 
 		buffer_r = data->buff;
 		next_addr_aligned = get_next_aligned_addr (data->addr);
@@ -298,15 +330,12 @@ static long io_ioctl (struct file *file, unsigned int cmd, unsigned long data_ad
 			void *kaddr;
 			int bytes;
 
-			if (len > (next_addr_aligned - data->addr))
-				bytes = next_addr_aligned - data->addr;
-			else
-				bytes = len;
+			bytes = get_bytes_to_read (data->addr, len, next_addr_aligned);
 
 			pg = pfn_to_page (data->addr >> PAGE_SHIFT);
 			kaddr = kmap(pg) + (data->addr & (~PAGE_MASK));
 			pr_info ("%s: kaddr: 0x%p\n", r2_devname, kaddr);
-			pr_info ("%s: kaddr + offset: 0x%p\n", r2_devname, kaddr - (data->addr & (~PAGE_MASK)));
+			pr_info ("%s: kaddr - offset: 0x%p\n", r2_devname, kaddr - (data->addr & (~PAGE_MASK)));
 			pr_info ("%s: bytes %d\n", r2_devname, bytes);
 			if (!kaddr) {
 				pr_info ("%s: kmap returned an error\n", r2_devname);
