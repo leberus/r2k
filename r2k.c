@@ -1,6 +1,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/ioctl.h>
+//#include <linux/device.h>
 #include <linux/cdev.h>
 #include <linux/fs.h>
 #include <linux/page-flags.h>
@@ -8,29 +9,44 @@
 #include <linux/slab.h>
 #include <linux/sched.h>
 #include <linux/pagemap.h>
-#include <asm/uaccess.h>
-#include <asm/highmem.h>
+#include <linux/highmem.h>
+#include <linux/uaccess.h>
+#include <linux/version.h>
+#include <linux/utsname.h>
+
 
 /*
 	search how the modules are being loaded
 */
 
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,6,0)
+#define get_user_pages		get_user_pages_remote
+#define page_cache_release	put_page
+#endif
+
+
 static char R2_TYPE = 'k';
 
 #define IOCTL_READ_KERNEL_MEMORY	0x1
 #define IOCTL_WRITE_KERNEL_MEMORY	0x2
-#define IOCTL_READ_LINEAR_ADDR		0x3
-#define IOCTL_WRITE_LINEAR_ADDR		0x4
+#define IOCTL_READ_PROCESS_ADDR		0x3
+#define IOCTL_WRITE_PROCESS_ADDR	0x4
 #define IOCTL_READ_PHYSICAL_ADDR	0x5
 #define IOCTL_WRITE_PHYSICAL_ADDR	0x6
 #define IOCTL_GET_PROC_MAPS		0x7
 #define IOCTL_GET_KERNEL_MAP		0x8
 
 
+//#define  R2_CLASS_NAME	"r2"
+//static unsigned int r2_major;
+//static struct class *r2_class;
+//static struct device *r2_dev;
+
+
 static struct cdev *r2_dev;
 static dev_t dev;
-static char *r2_devname = "r2";
+static char *r2_devname = "r2k";
 
 static unsigned char c = 'a';
 
@@ -43,6 +59,7 @@ struct r2k_data {
 
 static int io_open (struct inode *inode, struct file *file)
 {
+	pr_info ("%s: io_open\n", r2_devname);
 	return 0;
 }
 
@@ -64,8 +81,6 @@ static unsigned int addr_is_mapped (unsigned long addr)
 	pte = lookup_address (addr, &level);
 	if (pte) 
 		return pte_check_bit (pte, _PAGE_PRESENT);
-
-	pr_info ("%s: pte == null\n", r2_devname);
 	return 0;
 }
 
@@ -76,8 +91,6 @@ static unsigned int addr_is_writeable (unsigned long addr){
 	pte = lookup_address (addr, &level);
 	if (pte) 
 		return pte_check_bit (pte, _PAGE_RW);
-
-	pr_info ("%s: pte == null\n", r2_devname);
 	return 0;
 }
 
@@ -86,15 +99,6 @@ static int check_kernel_addr (unsigned long addr)
 	return virt_addr_valid (addr) == 0 
 			? is_vmalloc_addr ((void *)addr) 
 			: 1;
-}
-
-static void check_vmalloc_addr (unsigned long addr)
-{
-	if (is_vmalloc_addr ((void *)addr))
-		pr_info ("%s: 0x%lx belongs to vmalloc\n", r2_devname, addr);
-	else
-		pr_info ("%s: 0x%lx does not belong to vmalloc\n", r2_devname, 
-									addr);
 }
 
 static int get_nr_pages (unsigned long addr, unsigned long next_aligned_addr, 
@@ -137,19 +141,30 @@ static unsigned long get_next_aligned_addr (unsigned long addr)
 static long io_ioctl (struct file *file, unsigned int cmd, 
 					unsigned long data_addr)
 {
-	struct r2k_data __user *data = (struct r2k_data __user *)data_addr;
+	struct r2k_data *data;
 	struct task_struct *task;
 	struct vm_area_struct *vma;
 	unsigned long next_aligned_addr;
 	int nr_pages;
 	int page_i;
 	void __user *buffer_r;
-	
 	unsigned long len;
 	int ret = 0;
 
 	if (_IOC_TYPE (cmd) != R2_TYPE)
 		return -EINVAL;
+
+	data = kmalloc (sizeof (*data), GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+
+	memset (data, 0, sizeof (*data));
+	ret = copy_from_user (data, (void __user*)data_addr, sizeof (*data));
+	if (ret) {
+		pr_info ("%s: couldn not copy struct r2k_data\n", r2_devname);
+		kfree (data);
+		return -EFAULT;
+	}
 
 	len = data->len;
 
@@ -166,8 +181,6 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			ret = -EFAULT;
 			return ret;
 		}
-
-		check_vmalloc_addr (data->addr);
 
 		if (!addr_is_mapped (data->addr)) {
 			pr_info ("%s: addr is not mapped\n", r2_devname);
@@ -212,10 +225,10 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 				
 		break; 
 
-	case IOCTL_READ_LINEAR_ADDR:
-	case IOCTL_WRITE_LINEAR_ADDR:
+	case IOCTL_READ_PROCESS_ADDR:
+	case IOCTL_WRITE_PROCESS_ADDR:
 
-		pr_info ("%s: IOCTL_READ/WRITE_LINEAR_ADDR at 0x%lx" 
+		pr_info ("%s: IOCTL_READ/WRITE_PROCESS_ADDR at 0x%lx" 
 						"from pid (%d) bytes (%ld)\n", 
 						r2_devname, data->addr, 
 						data->pid, data->len);
@@ -228,7 +241,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 							"from pid (%d)\n", 
 							r2_devname, data->pid);
 			ret = -ESRCH;
-			return ret;
+			goto out;
 		}
 
 		vma = find_vma (task->mm, data->addr);
@@ -237,7 +250,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 								"at 0x%lx\n", 
 						r2_devname, data->addr);
 			ret = -EFAULT;
-			return ret;
+			goto out;
 		}
 			
 		pr_info ("%s: vma->vm_start - vma->vm_end, 0x%lx - 0x%lx\n", 
@@ -270,13 +283,15 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			ret = get_user_pages (task, task->mm, data->addr, 1, 
 									0, 
 									0, 
-								&pg, NULL);
+									&pg, 
+									NULL);
 			if (!ret) {
 				pr_info ("%s: could not retrieve page"
 							"from pid (%d)\n", 
 							r2_devname, data->pid);
 				ret = -ESRCH;
-				return ret;
+        			page_cache_release (pg);
+				goto out_l;
 			}
 
 			bytes = get_bytes_to_read (data->addr, len, 
@@ -290,28 +305,27 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 						"triggering a fault\n", 
 								r2_devname);
 		
-			if (_IOC_NR (cmd) == IOCTL_READ_LINEAR_ADDR)
+			if (_IOC_NR (cmd) == IOCTL_READ_PROCESS_ADDR)
 				ret = copy_to_user (buffer_r, kaddr, bytes);
 			else
 				ret = copy_from_user (kaddr, buffer_r,  bytes);
 
 			if (ret) {
-				up_read (&task->mm->mmap_sem);
 				pr_info ("%s: copy_to_user failed\n", 
 								r2_devname);
-				page_cache_release (pg);
 				ret = -EFAULT;
-				return ret;
+        			page_cache_release (pg);
+				goto out_l;
 			}
 
 			buffer_r += bytes;
 			data->addr = next_aligned_addr;
 			next_aligned_addr += PAGE_SIZE;
 			len -= bytes;
-
 			page_cache_release (pg);
 		}
 
+	out_l:
 		up_read (&task->mm->mmap_sem);
 		break;
 
@@ -344,16 +358,18 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			if (!kaddr) {
 				pr_info ("%s: kmap returned an error\n", 
 								r2_devname);
+				kunmap (pg);
 				ret = -EFAULT;
-				return ret;
+				goto out;
 			}
 
 			ret = copy_to_user (buffer_r, kaddr, bytes);
 			if (ret) {
 				pr_info ("%s: copy_to_user failed\n", 
 								r2_devname);
+				kunmap (pg);
                 	        ret = -EFAULT;
-                	        return ret;
+				goto out;
 			}
 			kunmap (pg);
 			buffer_r += bytes;
@@ -363,12 +379,31 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		}
 		break;
 
+	case IOCTL_GET_KERNEL_MAP:
+	
+		pr_info ("%s: IOCTL_GET_KERNEL_MAP\n", r2_devname);
+
+		/*
+			Areas
+	
+			User Space
+			Kernel Mapping
+			vmalloc()
+			vmalloc() End
+			Persistent kmap() 
+			Fixmap Area
+		*/
+			
+		break;
+
 	default:
 		pr_info ("%s: operation not implemented\n", r2_devname);
 		ret = -EINVAL;
 		break;
 	}
 
+out:
+	kfree (data);
 	return ret;
 }
 
@@ -382,39 +417,33 @@ static struct file_operations fops = {
 
 static int __init r2k_init (void)
 {
-        int ret;
+	int ret;
 
 	pr_info ("%s: loading driver\n", r2_devname);
 
 	ret = alloc_chrdev_region (&dev, 0, 1, r2_devname);
 	r2_dev = cdev_alloc();
 	cdev_init (r2_dev, &fops);
-	cdev_add (r2_dev, dev, 1);
+	cdev_add (r2_dev, dev, 1); 
+
+	pr_info ("%s: please create the proper device with -"
+                                        "mknod /dev/%s c %d %d\n",
+                                        r2_devname, r2_devname, MAJOR (dev),
+                                                                MINOR (dev));
 	
-	pr_info ("%s: please create the proper device with -" 
-					"mknod /dev/%s c %d %d\n", 	
-					r2_devname, r2_devname, MAJOR (dev), 
-								MINOR (dev));
-	pr_info ("%s: VMALLOC_END:\t\t0x%lx\n", r2_devname, VMALLOC_END);
-	pr_info ("%s: VMALLOC_OFFSET:\t\t0x%x\n", r2_devname, VMALLOC_OFFSET);
-	pr_info ("%s: PKMAP_BASE:\t\t0x%lx\n", r2_devname, PKMAP_BASE);
-	pr_info ("%s: FIXADDR_START:\t\t0x%lx\n", r2_devname, FIXADDR_START);
-	pr_info ("%s: FIXADDR_TOP:\t\t0x%lx\n", r2_devname, FIXADDR_TOP);
-	pr_info ("%s: mem_map:\t\t\t0x%p\n", r2_devname, &mem_map);
-	pr_info ("%s: __START_KERNEL_map:\t0x%lx\n", r2_devname, 
-							__START_KERNEL_map);
-	pr_info ("%s: KERNEL_IMAGE_SIZE:\t\t0x%x\n", r2_devname, 
-							KERNEL_IMAGE_SIZE);
 	pr_info ("%s: c variable memory:\t\t0x%p\n", r2_devname, &c);
+	pr_info ("%s: kernel_version: %s\n", r2_devname, utsname()->release);
 
 	return 0;
 }
 
 static void __exit r2k_exit (void)
 {
+	/*device_destroy (r2_class, MKDEV (r2_major, 0));
+	class_unregister (r2_class);
+	class_destroy (r2_class);*/
 	unregister_chrdev_region (dev, 1);
-	cdev_del (r2_dev);
-	pr_info ("%s: unloading driver, please delete /dev/%s\n", r2_devname, 
+	pr_info ("%s: unloading driver, /dev/%s deleted\n", r2_devname,
 								r2_devname);
 }
 

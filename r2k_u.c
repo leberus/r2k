@@ -23,8 +23,8 @@ static char R2_TYPE = 'k';
 
 #define IOCTL_READ_KERNEL_MEMORY	_IOR (R2_TYPE, 0x1, sizeof (struct r2k_data))
 #define IOCTL_WRITE_KERNEL_MEMORY	_IOR (R2_TYPE, 0x2, sizeof (struct r2k_data))
-#define IOCTL_READ_LINEAR_ADDR          _IOR (R2_TYPE, 0x3, sizeof (struct r2k_data))
-#define IOCTL_WRITE_LINEAR_ADDR         _IOR (R2_TYPE, 0x4, sizeof (struct r2k_data))
+#define IOCTL_READ_PROCESS_ADDR          _IOR (R2_TYPE, 0x3, sizeof (struct r2k_data))
+#define IOCTL_WRITE_PROCESS_ADDR         _IOR (R2_TYPE, 0x4, sizeof (struct r2k_data))
 #define IOCTL_READ_PHYSICAL_ADDR        _IOR (R2_TYPE, 0x5, sizeof (struct r2k_data))
 #define IOCTL_WRITE_PHYSICAL_ADDR       _IOR (R2_TYPE, 0x6, sizeof (struct r2k_data))
 #define IOCTL_GET_PROC_MAPS             _IOR (R2_TYPE, 0x7, sizeof (struct r2k_data))
@@ -32,8 +32,8 @@ static char R2_TYPE = 'k';
 
 #define READ_KERNEL_MEMORY		0x1
 #define WRITE_KERNEL_MEMORY		0x2
-#define READ_LINEAR_ADDR		0x3
-#define WRITE_LINEAR_ADDR		0x4
+#define READ_PROCESS_ADDR		0x3
+#define WRITE_PROCESS_ADDR		0x4
 #define READ_PHYSICAL_ADDR		0x5
 #define WRITE_PHYSICAL_ADDR		0x6
 #define GET_PROC_MAPS			0x7
@@ -42,15 +42,15 @@ static char R2_TYPE = 'k';
 const char *ioctl_str[] = 	{
 					"IOCTL_READ_KERNEL_MEMORY",
 					"IOCTL_WRITE_KERNEL_MEMORY",
-					"IOCTL_READ_LINEAR_ADDR",
-					"IOCTL_WRITE_LINEAR_ADDR",
+					"IOCTL_READ_PROCESS_ADDR",
+					"IOCTL_WRITE_PROCESS_ADDR",
 					"IOCTL_READ_PHYSICAL_ADDR",
 					"IOCTL_WRITE_PHYSICAL_ADDR",
 					"IOCTL_GET_PROC_MAPS",
 					"IOCTL_GET_KERNEL_MAP"
 				};
 
-const char *devicename = "/dev/r2";
+const char *devicename = "/dev/r2k";
 const char *prog_name;
 
 void print_help(void)
@@ -79,6 +79,7 @@ int main(int argc, char **argv)
 	data.addr = data.pid = data.len = 0;
 	prog_name = argv[0];
 	output = HEX;
+	ioctl_n = 0;
 
 	if (argc < 4)
 		print_help();
@@ -116,6 +117,9 @@ int main(int argc, char **argv)
 		}
 	}
 
+	if (!n_ioctl)
+		print_help();
+
 	printf ("ioctl: %s\n", ioctl_str[n_ioctl - 1]);
 	printf ("ioctl: addr 0x%lx\n", data.addr);
 	printf ("ioctl: %d bytes\n", n_bytes);
@@ -125,7 +129,7 @@ int main(int argc, char **argv)
 
 	fd = open (devicename, O_RDONLY);
         if( fd == -1 ) {
-                perror ("error\n");
+                perror ("open error");
                 return -1;
         }
 
@@ -165,14 +169,14 @@ int main(int argc, char **argv)
 		fprintf (stderr, "ioctl err: %s\n", strerror (errno));
 		break;
 
-	case READ_LINEAR_ADDR:
+	case READ_PROCESS_ADDR:
 
 		data.buff = (unsigned char *)calloc (n_bytes, 1);
 		data.len = n_bytes;
 
 		printf ("Reading %d bytes at 0x%lx from pid (%d)\n", data.len, data.addr, data.pid);
 
-		ioctl_n = IOCTL_READ_LINEAR_ADDR;
+		ioctl_n = IOCTL_READ_PROCESS_ADDR;
 		ret = ioctl (fd, ioctl_n, &data);
 		printf ("ret: %d\n", ret);
 		fprintf (stderr, "ioctl err: %s\n", strerror (errno));
@@ -186,7 +190,7 @@ int main(int argc, char **argv)
 
 		break;
 
-	case WRITE_LINEAR_ADDR:
+	case WRITE_PROCESS_ADDR:
 
 		data.buff = (unsigned char *)calloc (n_bytes, 1);
 		data.len = n_bytes;
@@ -195,7 +199,7 @@ int main(int argc, char **argv)
 		printf ("Writing %d bytes at 0x%lx from pid (%d)\n", data.len, data.addr, data.pid);
 		printf ("Str: %s\n", data.buff);
 
-		ioctl_n = IOCTL_WRITE_LINEAR_ADDR;
+		ioctl_n = IOCTL_WRITE_PROCESS_ADDR;
 		ret = ioctl (fd, ioctl_n, &data);
 		printf ("ret: %d\n", ret);
 		fprintf (stderr, "ioctl err: %s\n", strerror (errno));
