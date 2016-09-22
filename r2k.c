@@ -1,7 +1,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/ioctl.h>
-//#include <linux/device.h>
+#include <linux/device.h>
 #include <linux/cdev.h>
 #include <linux/fs.h>
 #include <linux/page-flags.h>
@@ -14,19 +14,13 @@
 #include <linux/version.h>
 #include <linux/utsname.h>
 
-
-/*
-	search how the modules are being loaded
-*/
-
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,6,0)
 #define get_user_pages		get_user_pages_remote
 #define page_cache_release	put_page
 #endif
 
 
-static char R2_TYPE = 'k';
+static char R2_TYPE = 'R';
 
 #define IOCTL_READ_KERNEL_MEMORY	0x1
 #define IOCTL_WRITE_KERNEL_MEMORY	0x2
@@ -37,18 +31,14 @@ static char R2_TYPE = 'k';
 #define IOCTL_GET_PROC_MAPS		0x7
 #define IOCTL_GET_KERNEL_MAP		0x8
 
-
-//#define  R2_CLASS_NAME	"r2"
-//static unsigned int r2_major;
-//static struct class *r2_class;
-//static struct device *r2_dev;
-
-
-static struct cdev *r2_dev;
-static dev_t dev;
+#define  R2_CLASS_NAME	"r2k"
+static struct device *r2k_dev_ph;
+static struct class *r2k_class;
+static struct cdev *r2k_dev;
 static char *r2_devname = "r2k";
+static dev_t dev;
 
-static unsigned char c = 'a';
+//static unsigned char c = 'a';
 
 struct r2k_data {
 	int pid;
@@ -59,7 +49,6 @@ struct r2k_data {
 
 static int io_open (struct inode *inode, struct file *file)
 {
-	pr_info ("%s: io_open\n", r2_devname);
 	return 0;
 }
 
@@ -119,7 +108,7 @@ static int get_nr_pages (unsigned long addr, unsigned long next_aligned_addr,
 				: len / PAGE_SIZE;
 	}
 
-	pr_info ("%s: nr pages %d\n", r2_devname, nr_pages);		
+	pr_debug ("%s: nr pages %d\n", r2_devname, nr_pages);		
 	return nr_pages;
 }
 
@@ -137,6 +126,11 @@ static unsigned long get_next_aligned_addr (unsigned long addr)
 			? PAGE_ALIGN (addr) 
 			: addr + PAGE_SIZE;
 }
+
+static inline enum zone_type get_zone_page (const struct page *pg)
+{
+	return (pg->flags >> ZONES_PGSHIFT) & ZONES_MASK;
+}	
 
 static long io_ioctl (struct file *file, unsigned int cmd, 
 					unsigned long data_addr)
@@ -172,7 +166,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 	case IOCTL_READ_KERNEL_MEMORY:
 		
-		pr_info ("%s: IOCTL_READ_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
+		pr_debug ("%s: IOCTL_READ_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
 								data->addr);
 	
 		if (!check_kernel_addr (data->addr)) {
@@ -199,7 +193,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 	case IOCTL_WRITE_KERNEL_MEMORY:
 
-		pr_info ("%s: IOCTL_WRITE_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
+		pr_debug ("%s: IOCTL_WRITE_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
 								data->addr);
 
 		if (!check_kernel_addr (data->addr)) {
@@ -228,7 +222,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	case IOCTL_READ_PROCESS_ADDR:
 	case IOCTL_WRITE_PROCESS_ADDR:
 
-		pr_info ("%s: IOCTL_READ/WRITE_PROCESS_ADDR at 0x%lx" 
+		pr_debug ("%s: IOCTL_READ/WRITE_PROCESS_ADDR at 0x%lx" 
 						"from pid (%d) bytes (%ld)\n", 
 						r2_devname, data->addr, 
 						data->pid, data->len);
@@ -253,7 +247,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			goto out;
 		}
 			
-		pr_info ("%s: vma->vm_start - vma->vm_end, 0x%lx - 0x%lx\n", 
+		pr_debug ("%s: vma->vm_start - vma->vm_end, 0x%lx - 0x%lx\n", 
 						r2_devname, vma->vm_start, 
 								vma->vm_end);
 
@@ -270,7 +264,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		
 		next_aligned_addr = get_next_aligned_addr (data->addr);
 		nr_pages = get_nr_pages (data->addr, next_aligned_addr, len);
-		pr_info ("%s: next_aligned_addr 0x%lx\n", r2_devname, 
+		pr_debug ("%s: next_aligned_addr 0x%lx\n", r2_devname, 
 							next_aligned_addr);
 			
 		down_read (&task->mm->mmap_sem);
@@ -291,14 +285,14 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 							r2_devname, data->pid);
 				ret = -ESRCH;
         			page_cache_release (pg);
-				goto out_l;
+				goto out_loop;
 			}
 
 			bytes = get_bytes_to_read (data->addr, len, 
 							next_aligned_addr);
 			kaddr = kmap (pg) + (data->addr & (~PAGE_MASK));
-			pr_info ("%s: kaddr 0x%p\n", r2_devname, kaddr);
-			pr_info ("%s: reading %d bytes\n", r2_devname, bytes);
+			pr_debug ("%s: kaddr 0x%p\n", r2_devname, kaddr);
+			pr_debug ("%s: reading %d bytes\n", r2_devname, bytes);
 
 			if (!addr_is_mapped ( (unsigned long)kaddr)) 
                         	pr_info ("%s: addr is not mapped," 
@@ -314,30 +308,32 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 				pr_info ("%s: copy_to_user failed\n", 
 								r2_devname);
 				ret = -EFAULT;
+				kunmap (pg);
         			page_cache_release (pg);
-				goto out_l;
+				goto out_loop;
 			}
 
 			buffer_r += bytes;
 			data->addr = next_aligned_addr;
 			next_aligned_addr += PAGE_SIZE;
 			len -= bytes;
+			kunmap (pg);
 			page_cache_release (pg);
 		}
 
-	out_l:
+	out_loop:
 		up_read (&task->mm->mmap_sem);
 		break;
 
 	case IOCTL_READ_PHYSICAL_ADDR:
 
-		pr_info ("%s: IOCTL_READ_PHYSICAL_ADDR on 0x%lx\n", r2_devname, 
+		pr_debug ("%s: IOCTL_READ_PHYSICAL_ADDR on 0x%lx\n", r2_devname, 
 								data->addr);
 
 		buffer_r = data->buff;
 		next_aligned_addr = get_next_aligned_addr (data->addr);
 		nr_pages = get_nr_pages (data->addr, next_aligned_addr, len);
-		pr_info ("%s: next_aligned_addr: 0x%lx\n", r2_devname, 
+		pr_debug ("%s: next_aligned_addr: 0x%lx\n", r2_devname, 
 							next_aligned_addr);
 	
 		for (page_i = 0 ; page_i < nr_pages ; page_i++) {
@@ -351,10 +347,10 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 			pg = pfn_to_page (data->addr >> PAGE_SHIFT);
 			kaddr = kmap(pg) + (data->addr & (~PAGE_MASK));
-			pr_info ("%s: kaddr: 0x%p\n", r2_devname, kaddr);
-			pr_info ("%s: kaddr - offset: 0x%p\n", r2_devname, 
+			pr_debug ("%s: kaddr: 0x%p\n", r2_devname, kaddr);
+			pr_debug ("%s: kaddr - offset: 0x%p\n", r2_devname, 
 					kaddr - (data->addr & (~PAGE_MASK)));
-			pr_info ("%s: bytes %d\n", r2_devname, bytes);
+			pr_debug ("%s: reading %d bytes\n", r2_devname, bytes);
 			if (!kaddr) {
 				pr_info ("%s: kmap returned an error\n", 
 								r2_devname);
@@ -381,7 +377,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 	case IOCTL_GET_KERNEL_MAP:
 	
-		pr_info ("%s: IOCTL_GET_KERNEL_MAP\n", r2_devname);
+		pr_debug ("%s: IOCTL_GET_KERNEL_MAP\n", r2_devname);
 
 		/*
 			Areas
@@ -414,6 +410,16 @@ static struct file_operations fops = {
         .unlocked_ioctl = io_ioctl,
 };
 
+static char *r2k_devnode (struct device *dev_ph, umode_t *mode)
+{
+	if (mode) {
+		if (dev_ph->devt == dev) 
+			*mode = 0644;
+	}
+
+	return NULL;
+}
+
 
 static int __init r2k_init (void)
 {
@@ -422,26 +428,67 @@ static int __init r2k_init (void)
 	pr_info ("%s: loading driver\n", r2_devname);
 
 	ret = alloc_chrdev_region (&dev, 0, 1, r2_devname);
-	r2_dev = cdev_alloc();
-	cdev_init (r2_dev, &fops);
-	cdev_add (r2_dev, dev, 1); 
+	if (ret < 0) {
+		pr_info ("%s: alloc_chrdev_region failed\n", r2_devname);
+		goto out;
+	}
 
-	pr_info ("%s: please create the proper device with -"
-                                        "mknod /dev/%s c %d %d\n",
-                                        r2_devname, r2_devname, MAJOR (dev),
-                                                                MINOR (dev));
-	
-	pr_info ("%s: c variable memory:\t\t0x%p\n", r2_devname, &c);
+	r2k_class = class_create (THIS_MODULE, R2_CLASS_NAME);
+	if (IS_ERR (r2k_class)) {
+		pr_info ("%s: class_create failed creating -r2k- class\n", 
+								r2_devname);
+		ret = PTR_ERR (r2k_class);
+		goto out_unreg_dev;
+	}
+
+	r2k_class->devnode = r2k_devnode;		
+
+	r2k_dev = cdev_alloc();
+	if (r2k_dev == NULL) {
+		pr_info ("%s: cdev_alloc failed\n", r2_devname);
+		ret = -ENOMEM;
+		goto out_unreg_class;
+	}	
+
+	cdev_init (r2k_dev, &fops);
+	ret = cdev_add (r2k_dev, dev, 1);
+	if (ret < 0) {
+		pr_info ("%s: cdev_add failed\n", r2_devname);
+		goto out_unreg_class;
+	}
+
+	r2k_dev_ph = device_create (r2k_class, NULL, dev, NULL, r2_devname);
+	if (IS_ERR (r2k_dev_ph)) {
+		pr_info ("%s: device_create failed\n", r2_devname);
+		ret = PTR_ERR (r2k_dev_ph);
+		goto out_del_cdev;
+	}
+
+	pr_info ("%s: /dev/%s created\n", r2_devname, r2_devname);
 	pr_info ("%s: kernel_version: %s\n", r2_devname, utsname()->release);
 
 	return 0;
+
+out_del_cdev:
+	cdev_del (r2k_dev);	
+
+out_unreg_class:
+	device_destroy (r2k_class, dev);
+	class_unregister (r2k_class);
+
+out_unreg_dev:
+	unregister_chrdev_region (dev, 1);
+
+out:
+	return ret;
 }
 
 static void __exit r2k_exit (void)
 {
-	/*device_destroy (r2_class, MKDEV (r2_major, 0));
-	class_unregister (r2_class);
-	class_destroy (r2_class);*/
+	device_destroy (r2k_class, dev);
+	class_unregister (r2k_class);
+	class_destroy (r2k_class);
+	cdev_del (r2k_dev);
 	unregister_chrdev_region (dev, 1);
 	pr_info ("%s: unloading driver, /dev/%s deleted\n", r2_devname,
 								r2_devname);

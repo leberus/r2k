@@ -19,7 +19,7 @@ struct r2k_data {
         unsigned char *buff;
 };
 
-static char R2_TYPE = 'k';
+static char R2_TYPE = 'R';
 
 #define IOCTL_READ_KERNEL_MEMORY	_IOR (R2_TYPE, 0x1, sizeof (struct r2k_data))
 #define IOCTL_WRITE_KERNEL_MEMORY	_IOR (R2_TYPE, 0x2, sizeof (struct r2k_data))
