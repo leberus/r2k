@@ -19,7 +19,7 @@ struct r2k_data {
         unsigned char *buff;
 };
 
-static char R2_TYPE = 'R';
+static char R2_TYPE = 'k';
 
 #define IOCTL_READ_KERNEL_MEMORY	_IOR (R2_TYPE, 0x1, sizeof (struct r2k_data))
 #define IOCTL_WRITE_KERNEL_MEMORY	_IOR (R2_TYPE, 0x2, sizeof (struct r2k_data))
@@ -225,6 +225,20 @@ int main(int argc, char **argv)
                 }
 	
 		break;
+
+	case WRITE_PHYSICAL_ADDR:
+
+		data.buff = (unsigned char *)calloc (n_bytes, 1);
+		data.len = n_bytes;
+		strncpy (data.buff, str, data.len);
+		
+		printf ("Writing %d bytes at 0x%lx from pid (%d)\n", data.len, data.addr, data.pid);
+                printf ("Str: %s\n", data.buff);
+
+                ioctl_n = IOCTL_WRITE_PHYSICAL_ADDR;
+                ret = ioctl (fd, ioctl_n, &data);
+                printf ("ret: %d\n", ret);
+                fprintf (stderr, "ioctl err: %s\n", strerror (errno));
 
 	default:
 		printf ("ioctl not implemented\n");
