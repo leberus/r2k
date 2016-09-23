@@ -20,7 +20,7 @@
 #endif
 
 
-static char R2_TYPE = 'R';
+static char R2_TYPE = 'k';
 
 #define IOCTL_READ_KERNEL_MEMORY	0x1
 #define IOCTL_WRITE_KERNEL_MEMORY	0x2
@@ -32,11 +32,12 @@ static char R2_TYPE = 'R';
 #define IOCTL_GET_KERNEL_MAP		0x8
 
 #define  R2_CLASS_NAME	"r2k"
+
 static struct device *r2k_dev_ph;
 static struct class *r2k_class;
 static struct cdev *r2k_dev;
 static char *r2_devname = "r2k";
-static dev_t dev;
+static dev_t devno;
 
 //static unsigned char c = 'a';
 
@@ -112,7 +113,7 @@ static int get_nr_pages (unsigned long addr, unsigned long next_aligned_addr,
 	return nr_pages;
 }
 
-static inline int get_bytes_to_read (unsigned long addr, unsigned long len,
+static inline int get_bytes_to_rw (unsigned long addr, unsigned long len,
 						unsigned long next_aligned_addr)
 {
 	return (len > (next_aligned_addr - addr)) 
@@ -144,6 +145,8 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	void __user *buffer_r;
 	unsigned long len;
 	int ret = 0;
+
+	pr_info ("reach!\n");
 
 	if (_IOC_TYPE (cmd) != R2_TYPE)
 		return -EINVAL;
@@ -288,7 +291,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 				goto out_loop;
 			}
 
-			bytes = get_bytes_to_read (data->addr, len, 
+			bytes = get_bytes_to_rw (data->addr, len, 
 							next_aligned_addr);
 			kaddr = kmap (pg) + (data->addr & (~PAGE_MASK));
 			pr_debug ("%s: kaddr 0x%p\n", r2_devname, kaddr);
@@ -326,6 +329,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		break;
 
 	case IOCTL_READ_PHYSICAL_ADDR:
+	case IOCTL_WRITE_PHYSICAL_ADDR:
 
 		pr_debug ("%s: IOCTL_READ_PHYSICAL_ADDR on 0x%lx\n", r2_devname, 
 								data->addr);
@@ -342,7 +346,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			void *kaddr;
 			int bytes;
 
-			bytes = get_bytes_to_read (data->addr, len, 
+			bytes = get_bytes_to_rw (data->addr, len, 
 							next_aligned_addr);
 
 			pg = pfn_to_page (data->addr >> PAGE_SHIFT);
@@ -351,22 +355,30 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			pr_debug ("%s: kaddr - offset: 0x%p\n", r2_devname, 
 					kaddr - (data->addr & (~PAGE_MASK)));
 			pr_debug ("%s: reading %d bytes\n", r2_devname, bytes);
-			if (!kaddr) {
-				pr_info ("%s: kmap returned an error\n", 
-								r2_devname);
-				kunmap (pg);
-				ret = -EFAULT;
-				goto out;
+
+			if (_IOC_NR (cmd) == IOCTL_READ_PHYSICAL_ADDR)
+				ret = copy_to_user (buffer_r, kaddr, bytes);
+			else {
+				if (!addr_is_writeable ( (unsigned long)kaddr)) {
+					pr_info ("%s: cannot write at addr "
+								"0x%lx\n", 
+								r2_devname, 
+							(unsigned long)kaddr);
+					kunmap (pg);
+					ret = -EPERM;
+					goto out;
+				}
+				ret = copy_from_user (buffer_r, kaddr, bytes);
 			}
 
-			ret = copy_to_user (buffer_r, kaddr, bytes);
 			if (ret) {
-				pr_info ("%s: copy_to_user failed\n", 
+				pr_info ("%s: failed while copying\n",
 								r2_devname);
 				kunmap (pg);
                 	        ret = -EFAULT;
 				goto out;
 			}
+
 			kunmap (pg);
 			buffer_r += bytes;
 			data->addr = next_aligned_addr;
@@ -413,10 +425,9 @@ static struct file_operations fops = {
 static char *r2k_devnode (struct device *dev_ph, umode_t *mode)
 {
 	if (mode) {
-		if (dev_ph->devt == dev) 
+		if (dev_ph->devt == devno) 
 			*mode = 0644;
 	}
-
 	return NULL;
 }
 
@@ -427,7 +438,7 @@ static int __init r2k_init (void)
 
 	pr_info ("%s: loading driver\n", r2_devname);
 
-	ret = alloc_chrdev_region (&dev, 0, 1, r2_devname);
+	ret = alloc_chrdev_region (&devno, 0, 1, r2_devname);
 	if (ret < 0) {
 		pr_info ("%s: alloc_chrdev_region failed\n", r2_devname);
 		goto out;
@@ -451,13 +462,13 @@ static int __init r2k_init (void)
 	}	
 
 	cdev_init (r2k_dev, &fops);
-	ret = cdev_add (r2k_dev, dev, 1);
+	ret = cdev_add (r2k_dev, devno, 1);
 	if (ret < 0) {
 		pr_info ("%s: cdev_add failed\n", r2_devname);
 		goto out_unreg_class;
 	}
 
-	r2k_dev_ph = device_create (r2k_class, NULL, dev, NULL, r2_devname);
+	r2k_dev_ph = device_create (r2k_class, NULL, devno, NULL, r2_devname);
 	if (IS_ERR (r2k_dev_ph)) {
 		pr_info ("%s: device_create failed\n", r2_devname);
 		ret = PTR_ERR (r2k_dev_ph);
@@ -473,11 +484,11 @@ out_del_cdev:
 	cdev_del (r2k_dev);	
 
 out_unreg_class:
-	device_destroy (r2k_class, dev);
+	device_destroy (r2k_class, devno);
 	class_unregister (r2k_class);
 
 out_unreg_dev:
-	unregister_chrdev_region (dev, 1);
+	unregister_chrdev_region (devno, 1);
 
 out:
 	return ret;
@@ -485,11 +496,12 @@ out:
 
 static void __exit r2k_exit (void)
 {
-	device_destroy (r2k_class, dev);
+	device_destroy (r2k_class, devno);
 	class_unregister (r2k_class);
+
 	class_destroy (r2k_class);
 	cdev_del (r2k_dev);
-	unregister_chrdev_region (dev, 1);
+	unregister_chrdev_region (devno, 1);
 	pr_info ("%s: unloading driver, /dev/%s deleted\n", r2_devname,
 								r2_devname);
 }
