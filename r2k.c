@@ -36,10 +36,9 @@ static char R2_TYPE = 'k';
 static struct device *r2k_dev_ph;
 static struct class *r2k_class;
 static struct cdev *r2k_dev;
-static char *r2_devname = "r2k";
 static dev_t devno;
 
-//static unsigned char c = 'a';
+static char *r2_devname = "r2k";
 
 struct r2k_data {
 	int pid;
@@ -84,10 +83,18 @@ static unsigned int addr_is_writeable (unsigned long addr){
 	return 0;
 }
 
+static int is_from_module_or_vmalloc (unsigned long addr)
+{
+	if (is_vmalloc_addr ((void *)addr) ||
+		__module_address (addr))
+		return 1;
+	return 0;
+}
+
 static int check_kernel_addr (unsigned long addr)
 {
 	return virt_addr_valid (addr) == 0 
-			? is_vmalloc_addr ((void *)addr) 
+			? is_from_module_or_vmalloc (addr) 
 			: 1;
 }
 
@@ -128,11 +135,6 @@ static unsigned long get_next_aligned_addr (unsigned long addr)
 			: addr + PAGE_SIZE;
 }
 
-static inline enum zone_type get_zone_page (const struct page *pg)
-{
-	return (pg->flags >> ZONES_PGSHIFT) & ZONES_MASK;
-}	
-
 static long io_ioctl (struct file *file, unsigned int cmd, 
 					unsigned long data_addr)
 {
@@ -145,8 +147,6 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	void __user *buffer_r;
 	unsigned long len;
 	int ret = 0;
-
-	pr_info ("reach!\n");
 
 	if (_IOC_TYPE (cmd) != R2_TYPE)
 		return -EINVAL;
@@ -335,6 +335,8 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 								data->addr);
 
 		buffer_r = data->buff;
+
+#ifdef CONFIG_X86_32
 		next_aligned_addr = get_next_aligned_addr (data->addr);
 		nr_pages = get_nr_pages (data->addr, next_aligned_addr, len);
 		pr_debug ("%s: next_aligned_addr: 0x%lx\n", r2_devname, 
@@ -385,6 +387,23 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			next_aligned_addr += PAGE_SIZE;
 			len -= bytes;
 		}
+#else
+		void *kaddr = phys_to_virt (data->addr);
+
+		if (_IOC_NR (cmd) == IOCTL_READ_PHYSICAL_ADDR)
+			ret = copy_to_user (buffer_r, kaddr, len);
+		else {
+			if (!addr_is_writeable ( (unsigned long)kaddr)) {
+				pr_info ("%s: cannot write at addr "
+							"0x%lx\n",
+							r2_devname,
+							(unsigned long)kaddr);
+				ret = -EPERM;
+				goto out;
+			}
+		}		
+#endif
+
 		break;
 
 	case IOCTL_GET_KERNEL_MAP:
@@ -435,6 +454,8 @@ static char *r2k_devnode (struct device *dev_ph, umode_t *mode)
 static int __init r2k_init (void)
 {
 	int ret;
+
+	pr_info ("%s: PAGE_OFFSET: 0x%lx\n", r2_devname, PAGE_OFFSET);
 
 	pr_info ("%s: loading driver\n", r2_devname);
 
