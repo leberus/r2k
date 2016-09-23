@@ -94,7 +94,7 @@ static int check_kernel_addr (unsigned long addr)
 {
 	return virt_addr_valid (addr) == 0 
 			? is_from_module_or_vmalloc (addr) 
-			: 0;
+			: 1;
 }
 
 static int get_nr_pages (unsigned long addr, unsigned long next_aligned_addr, 
