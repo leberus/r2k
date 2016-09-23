@@ -400,7 +400,15 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 				ret = -EPERM;
 				goto out;
 			}
-		}		
+			ret = copy_from_user (buffer_r, kaddr, len);
+		}
+
+		if (ret) {
+                                pr_info ("%s: failed while copying\n",
+                                                                r2_devname);
+                                ret = -EFAULT;
+                                goto out;
+                        }
 #endif
 
 		break;
