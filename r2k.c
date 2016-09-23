@@ -19,8 +19,7 @@
 #define page_cache_release	put_page
 #endif
 
-
-static char R2_TYPE = 'k';
+#define R2_TYPE 0x69
 
 #define IOCTL_READ_KERNEL_MEMORY	0x1
 #define IOCTL_WRITE_KERNEL_MEMORY	0x2
