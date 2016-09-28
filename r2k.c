@@ -19,6 +19,8 @@
 #define page_cache_release	put_page
 #endif
 
+#define ADDR_OFFSET(x)		(x & (~PAGE_MASK))
+
 #define R2_TYPE 0x69
 
 #define IOCTL_READ_KERNEL_MEMORY	0x1
@@ -134,6 +136,24 @@ static unsigned long get_next_aligned_addr (unsigned long addr)
 			: addr + PAGE_SIZE;
 }
 
+static inline void *map_addr (struct page *pg, unsigned long addr)
+{
+#if CONFIG_X86_64
+	return page_to_virt (pg) + ADDR_OFFSET (addr);
+#else
+	return kmap_atomic (pg) + ADDR_OFFSET (addr);
+#endif
+}
+
+static inline void unmap_addr (void *kaddr, unsigned long addr)
+{
+#if CONFIG_X86_64
+	return;
+#else
+	kunmap_atomic (kaddr - ADDR_OFFSET (addr));
+#endif
+}
+
 static long io_ioctl (struct file *file, unsigned int cmd, 
 					unsigned long data_addr)
 {
@@ -158,11 +178,15 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	ret = copy_from_user (data, (void __user*)data_addr, sizeof (*data));
 	if (ret) {
 		pr_info ("%s: couldn not copy struct r2k_data\n", r2_devname);
-		kfree (data);
-		return -EFAULT;
+		ret = -EFAULT;
+		goto out;
 	}
 
 	len = data->len;
+	if (len == 0) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	switch (_IOC_NR (cmd)) {
 
@@ -175,20 +199,20 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			pr_info ("%s: 0x%lx invalid addr\n", r2_devname, 
 								data->addr);
 			ret = -EFAULT;
-			return ret;
+			goto out;
 		}
 
 		if (!addr_is_mapped (data->addr)) {
 			pr_info ("%s: addr is not mapped\n", r2_devname);
 			ret = -EFAULT;
-			return ret;
+			goto out;
 		}
 
 		ret = copy_to_user (data->buff, (void *)data->addr, len);
 		if (ret) {
 			pr_info ("%s: copy_to_user failed\n", r2_devname);
 			ret = -EFAULT;
-			return ret;
+			goto out;
 		}
 
 		break;
@@ -202,21 +226,21 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			pr_info ("%s: 0x%lx invalid addr\n", r2_devname, 
 								data->addr);
 			ret = -EFAULT;
-			return ret;
+			goto out;
 		}	
 
 		if (!addr_is_writeable (data->addr)) {
 			pr_info ("%s: cannot write at addr 0x%lx\n", r2_devname, 
 								data->addr);
 			ret = -EPERM;
-			return ret;
+			goto out;
 		}
 				
 		ret = copy_from_user ((void *)data->addr, data->buff, len);
 		if (ret) {
 			pr_info ("%s: copy_to_user failed\n", r2_devname);
 			ret = -EFAULT;
-			return ret;
+			goto out;
 		}
 				
 		break; 
@@ -292,7 +316,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 			bytes = get_bytes_to_rw (data->addr, len, 
 							next_aligned_addr);
-			kaddr = kmap (pg) + (data->addr & (~PAGE_MASK));
+			kaddr = map_addr (pg, data->addr);
 			pr_debug ("%s: kaddr 0x%p\n", r2_devname, kaddr);
 			pr_debug ("%s: reading %d bytes\n", r2_devname, bytes);
 
@@ -310,7 +334,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 				pr_info ("%s: copy_to_user failed\n", 
 								r2_devname);
 				ret = -EFAULT;
-				kunmap (pg);
+				unmap_addr (kaddr, data->addr);
         			page_cache_release (pg);
 				goto out_loop;
 			}
@@ -319,7 +343,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			data->addr = next_aligned_addr;
 			next_aligned_addr += PAGE_SIZE;
 			len -= bytes;
-			kunmap (pg);
+			unmap_addr (kaddr, data->addr);
 			page_cache_release (pg);
 		}
 
@@ -332,7 +356,11 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 		pr_debug ("%s: IOCTL_READ_PHYSICAL_ADDR on 0x%lx\n", r2_devname, 
 								data->addr);
-
+		if (!pfn_valid (data->addr >> PAGE_SHIFT)) {
+			pr_info ("%s: 0x%lx out of range\n", r2_devname, data->addr);
+			ret = -EINVAL;
+			goto out;
+		}
 		buffer_r = data->buff;
 
 #ifdef CONFIG_X86_32
@@ -351,7 +379,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 							next_aligned_addr);
 
 			pg = pfn_to_page (data->addr >> PAGE_SHIFT);
-			kaddr = kmap(pg) + (data->addr & (~PAGE_MASK));
+			kaddr = map_addr (pg, data->addr);
 			pr_debug ("%s: kaddr: 0x%p\n", r2_devname, kaddr);
 			pr_debug ("%s: kaddr - offset: 0x%p\n", r2_devname, 
 					kaddr - (data->addr & (~PAGE_MASK)));
@@ -365,7 +393,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 								"0x%lx\n", 
 								r2_devname, 
 							(unsigned long)kaddr);
-					kunmap (pg);
+					unmap_addr (kaddr, data->addr);
 					ret = -EPERM;
 					goto out;
 				}
@@ -375,12 +403,12 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			if (ret) {
 				pr_info ("%s: failed while copying\n",
 								r2_devname);
-				kunmap (pg);
+				unmap_addr (kaddr, data->addr);
                 	        ret = -EFAULT;
 				goto out;
 			}
 
-			kunmap (pg);
+			unmap_addr (kaddr, data->addr);
 			buffer_r += bytes;
 			data->addr = next_aligned_addr;
 			next_aligned_addr += PAGE_SIZE;
@@ -505,6 +533,14 @@ static int __init r2k_init (void)
 
 	pr_info ("%s: /dev/%s created\n", r2_devname, r2_devname);
 	pr_info ("%s: kernel_version: %s\n", r2_devname, utsname()->release);
+
+/*	pr_info ("%s: num_physpages: %lu, "
+			"totalram_pages: %lu, "
+			"totalhigh_pages: %lu\n", r2_devname, num_physpages,
+					totalram_pages,	totalhigh_pages);*/
+			
+
+	/* x >> PAGE_SHIFT */
 
 	return 0;
 
