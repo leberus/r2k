@@ -138,20 +138,12 @@ static unsigned long get_next_aligned_addr (unsigned long addr)
 
 static inline void *map_addr (struct page *pg, unsigned long addr)
 {
-#if CONFIG_X86_64
-	return page_to_virt (pg) + ADDR_OFFSET (addr);
-#else
 	return kmap_atomic (pg) + ADDR_OFFSET (addr);
-#endif
 }
 
 static inline void unmap_addr (void *kaddr, unsigned long addr)
 {
-#if CONFIG_X86_64
-	return;
-#else
 	kunmap_atomic (kaddr - ADDR_OFFSET (addr));
-#endif
 }
 
 static long io_ioctl (struct file *file, unsigned int cmd, 
@@ -358,7 +350,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 								data->addr);
 		if (!pfn_valid (data->addr >> PAGE_SHIFT)) {
 			pr_info ("%s: 0x%lx out of range\n", r2_devname, data->addr);
-			ret = -EINVAL;
+			ret = -EFAULT;
 			goto out;
 		}
 		buffer_r = data->buff;
