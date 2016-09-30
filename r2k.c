@@ -21,6 +21,15 @@
 
 #define ADDR_OFFSET(x)		(x & (~PAGE_MASK))
 
+#ifdef CONFIG_ARM
+# define PAGE_IS_PRESENT(x)	pte_present(x)
+# define PAGE_IS_READONLY(x)	pte_write(x)
+#else
+# define PAGE_IS_PRESENT(x)	(pte_val (x) & _PAGE_PRESENT)
+# define PAGE_IS_READONLY(x)	(pte_val (x) & _PAGE_RW)
+#endif
+
+
 #define R2_TYPE 0x69
 
 #define IOCTL_READ_KERNEL_MEMORY	0x1
@@ -58,29 +67,39 @@ static int io_close (struct inode *inode, struct file *file)
 	return 0;
 }
 
-static unsigned int pte_check_bit (pte_t *pte, int bit)
+#ifdef CONFIG_ARM
+static pte_t *lookup_address (unsigned long addr, unsigned int *level)
 {
-	return (pte_val (*pte) & bit);
+	pmd_t *pmd = pmd_offset(pud_offset(pgd_offset_k(addr), addr), addr);
+	if (pmd == NULL || pmd_none (*pmd))
+		return NULL;
+
+	return pte_offset_kernel (pmd, addr);
+}
+#endif
+
+static pte_t *virt_to_pte (unsigned long addr)
+{
+	unsigned int level;
+	return lookup_address (addr, &level);
 }
 
 static unsigned int addr_is_mapped (unsigned long addr)
 {
 	pte_t *pte;
-	unsigned int level;
 
-	pte = lookup_address (addr, &level);
-	if (pte) 
-		return pte_check_bit (pte, _PAGE_PRESENT);
+	pte = virt_to_pte (addr);
+	if (pte && !pte_none (*pte)) 
+		return PAGE_IS_PRESENT (*pte);
 	return 0;
 }
 
 static unsigned int addr_is_writeable (unsigned long addr){
 	pte_t *pte;
-	unsigned int level;
 
-	pte = lookup_address (addr, &level);
-	if (pte) 
-		return pte_check_bit (pte, _PAGE_RW);
+	pte = virt_to_pte (addr);
+	if (pte && !pte_none (*pte)) 
+		return PAGE_IS_READONLY (*pte);
 	return 0;
 }
 
@@ -227,7 +246,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			ret = -EPERM;
 			goto out;
 		}
-				
+
 		ret = copy_from_user ((void *)data->addr, data->buff, len);
 		if (ret) {
 			pr_info ("%s: copy_to_user failed\n", r2_devname);
@@ -316,7 +335,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
                         	pr_info ("%s: addr is not mapped," 
 						"triggering a fault\n", 
 								r2_devname);
-		
+
 			if (_IOC_NR (cmd) == IOCTL_READ_PROCESS_ADDR)
 				ret = copy_to_user (buffer_r, kaddr, bytes);
 			else
@@ -525,14 +544,6 @@ static int __init r2k_init (void)
 
 	pr_info ("%s: /dev/%s created\n", r2_devname, r2_devname);
 	pr_info ("%s: kernel_version: %s\n", r2_devname, utsname()->release);
-
-/*	pr_info ("%s: num_physpages: %lu, "
-			"totalram_pages: %lu, "
-			"totalhigh_pages: %lu\n", r2_devname, num_physpages,
-					totalram_pages,	totalhigh_pages);*/
-			
-
-	/* x >> PAGE_SHIFT */
 
 	return 0;
 
