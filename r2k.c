@@ -29,7 +29,6 @@
 # define PAGE_IS_READONLY(x)	(pte_val (x) & _PAGE_RW)
 #endif
 
-
 #define R2_TYPE 0x69
 
 #define IOCTL_READ_KERNEL_MEMORY	0x1
