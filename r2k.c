@@ -14,6 +14,8 @@
 #include <linux/version.h>
 #include <linux/utsname.h>
 
+static char c = 'd';
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,6,0)
 #define get_user_pages		get_user_pages_remote
 #define page_cache_release	put_page
@@ -67,11 +69,41 @@ static int io_close (struct inode *inode, struct file *file)
 }
 
 #ifdef CONFIG_ARM
+#define r2k_pgd_offset(pgd, addr)	(pgd + pgd_index (addr))
+#define TTBR_BITS       14
+#define TTBR_MASK       (0x3ffff << TTBR_BITS)
+static pgd_t *get_global_pgd (void)
+{
+	pgd_t *pgd;
+	unsigned int ttb_reg;
+
+	asm volatile (
+	"	mrc	p15, 0, %0, c2, c0, 1"
+	: "=r" (ttb_reg));
+	
+	pr_info ("ttb_reg: 0x%x\n", ttb_reg);
+        pr_info ("ttb_reg: 0x%x\n", ttb_reg >> TTBR_BITS);
+        ttb_reg &= TTBR_MASK;
+        pr_info ("ttb_reg: 0x%x\n", ttb_reg);
+        pr_info ("vttb_reg: 0x%p\n", __va (ttb_reg));
+
+        pgd = __va (ttb_reg);
+	pr_info ("%s: get_global_pgd: 0x%0x - %p\n", r2_devname, pgd_val (*pgd), pgd);
+
+
+	return pgd; 
+}
+	
+
 static pte_t *lookup_address (unsigned long addr, unsigned int *level)
 {
-	pmd_t *pmd = pmd_offset(pud_offset(pgd_offset_k(addr), addr), addr);
-	if (pmd == NULL || pmd_none (*pmd))
+	pgd_t *pgd = get_global_pgd();
+	pmd_t *pmd = pmd_offset(pud_offset(r2k_pgd_offset(pgd, addr), addr), addr);
+
+	if (pmd == NULL || pmd_none (*pmd)) {
+		pr_info ("%s: pmd == NULL\n", r2_devname);
 		return NULL;
+	}
 
 	return pte_offset_kernel (pmd, addr);
 }
@@ -88,8 +120,11 @@ static unsigned int addr_is_mapped (unsigned long addr)
 	pte_t *pte;
 
 	pte = virt_to_pte (addr);
-	if (pte && !pte_none (*pte)) 
+
+	if (pte) {
+		pr_info ("addr_is_maped passed\n");
 		return PAGE_IS_PRESENT (*pte);
+	}
 	return 0;
 }
 
@@ -330,10 +365,14 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			pr_debug ("%s: kaddr 0x%p\n", r2_devname, kaddr);
 			pr_debug ("%s: reading %d bytes\n", r2_devname, bytes);
 
-			if (!addr_is_mapped ( (unsigned long)kaddr)) 
+			if (!addr_is_mapped ( (unsigned long)kaddr)) {
                         	pr_info ("%s: addr is not mapped," 
 						"triggering a fault\n", 
 								r2_devname);
+				unmap_addr (kaddr, data->addr);
+				page_cache_release (pg);
+				goto out_loop;
+			} 
 
 			if (_IOC_NR (cmd) == IOCTL_READ_PROCESS_ADDR)
 				ret = copy_to_user (buffer_r, kaddr, bytes);
@@ -501,8 +540,10 @@ static int __init r2k_init (void)
 	int ret;
 
 	pr_info ("%s: PAGE_OFFSET: 0x%lx\n", r2_devname, PAGE_OFFSET);
-
 	pr_info ("%s: loading driver\n", r2_devname);
+	pr_info ("%s: c: %p\n", r2_devname, &c);
+
+	get_global_pgd ();	
 
 	ret = alloc_chrdev_region (&devno, 0, 1, r2_devname);
 	if (ret < 0) {
