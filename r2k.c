@@ -24,6 +24,8 @@ static char c = 'd';
 #define ADDR_OFFSET(x)		(x & (~PAGE_MASK))
 
 #ifdef CONFIG_ARM
+# define PMD_IS_SECTION(x)	(pmd_val(x) & PMD_TYPE_MASK & PMD_TYPE_SECT)
+# define PMD_IS_TABLE(x)	(pmd_val(x) & PMD_TYPE_MASK & PMD_TYPE_TABLE)
 # define PAGE_IS_PRESENT(x)	pte_present(x)
 # define PAGE_IS_READONLY(x)	pte_write(x)
 #else
@@ -69,8 +71,7 @@ static int io_close (struct inode *inode, struct file *file)
 }
 
 #ifdef CONFIG_ARM
-#define r2k_pgd_offset(pgd, addr)	(pgd + pgd_index (addr))
-#define TTBR_BITS       14
+#define TTBR_BITS       0xe
 #define TTBR_MASK       (0x3ffff << TTBR_BITS)
 static pgd_t *get_global_pgd (void)
 {
@@ -81,60 +82,128 @@ static pgd_t *get_global_pgd (void)
 	"	mrc	p15, 0, %0, c2, c0, 1"
 	: "=r" (ttb_reg));
 	
-	pr_info ("ttb_reg: 0x%x\n", ttb_reg);
-        pr_info ("ttb_reg: 0x%x\n", ttb_reg >> TTBR_BITS);
         ttb_reg &= TTBR_MASK;
-        pr_info ("ttb_reg: 0x%x\n", ttb_reg);
-        pr_info ("vttb_reg: 0x%p\n", __va (ttb_reg));
-
         pgd = __va (ttb_reg);
 	pr_info ("%s: get_global_pgd: 0x%0x - %p\n", r2_devname, pgd_val (*pgd), pgd);
-
 
 	return pgd; 
 }
 	
 
-static pte_t *lookup_address (unsigned long addr, unsigned int *level)
+static pte_t *lookup_address (unsigned long addr)
 {
-	pgd_t *pgd = get_global_pgd();
-	pmd_t *pmd = pmd_offset(pud_offset(r2k_pgd_offset(pgd, addr), addr), addr);
+	pgd_t *pgd;
+	pud_t *pud;
+	pmd_t *pmd;
 
+	pgd = get_global_pgd() + pgd_index (addr);
+	pud = pud_offset (pgd, addr);
+	pmd = pmd_offset (pud, addr);
+
+	if (pgd_bad (*pgd))
+		return NULL;
+
+	if (pud_bad (*pud))
+		return NULL;
+		
 	if (pmd == NULL || pmd_none (*pmd)) {
 		pr_info ("%s: pmd == NULL\n", r2_devname);
 		return NULL;
 	}
 
-	return pte_offset_kernel (pmd, addr);
+	return pmd;
+}
+
+static pmd_t *virt_to_pmd (unsigned long addr)
+{
+	return lookup_address (addr);
+}
+
+static unsigned int arch_addr_is_mapped (unsigned long addr)
+{
+	pmd_t *pmd;
+
+	pmd = virt_to_pmd (addr);
+	if (pmd) {
+		if (PMD_IS_SECTION (*pmd)) {
+			/* Kernel is being mapped using sections (no pte's) */
+			pr_info ("%s: section\n", r2_devname);
+			return 1;
+		}
+
+		if (PMD_IS_TABLE (*pmd)) {
+			pte_t *pte = pte_offset_kernel (pmd, addr);
+			if (pte_present (*pte)) {
+				pr_info ("%s: pte_present\n", r2_devname);
+				return 1;
+			}
+		} 
+	}
+
+	return 0;
+}
+
+static unsigned int arch_addr_is_writeable (unsigned long addr)
+{
+	pmd_t *pmd;
+
+	pmd = virt_to_pmd (addr);
+	if (pmd) {
+		/* Sections are not being marked ro */
+		if (PMD_IS_SECTION (*pmd)) {
+			pr_info ("%s: section\n", r2_devname);
+			return 1;
+		}
+
+		if (PMD_IS_TABLE (*pmd)) {
+			pte_t *pte = pte_offset_kernel (pmd, addr);
+			if (pte_write (*pte)) {
+				pr_info ("%s: pte_write\n", r2_devname);
+				return 1;
+			}
+		}
+	}
+
+	return 0;	
 }
 #endif
 
+#ifdef CONFIG_X86_32 || CONFIG_X86_64
 static pte_t *virt_to_pte (unsigned long addr)
 {
-	unsigned int level;
-	return lookup_address (addr, &level);
+        unsigned int level;
+        return lookup_address (addr, &level);
 }
+
+static unsigned int arch_addr_is_mapped (unsigned long addr)
+{
+	pte_t *pte;
+
+	pte = virt_to_pte (addr);
+	if (pte)
+		return PAGE_IS_PRESENT (*pte);
+	return 0;
+}
+
+static unsigned int arch_addr_is_writeable (unsigned long addr)
+{
+	pte_t *pte;
+
+	pte = virt_to_pte (addr);	
+	if (pte)
+		return PAGE_IS_READONLY (*pte);
+	return 0;
+}
+#endif
 
 static unsigned int addr_is_mapped (unsigned long addr)
 {
-	pte_t *pte;
-
-	pte = virt_to_pte (addr);
-
-	if (pte) {
-		pr_info ("addr_is_maped passed\n");
-		return PAGE_IS_PRESENT (*pte);
-	}
-	return 0;
+	return arch_addr_is_mapped (addr);
 }
 
-static unsigned int addr_is_writeable (unsigned long addr){
-	pte_t *pte;
-
-	pte = virt_to_pte (addr);
-	if (pte && !pte_none (*pte)) 
-		return PAGE_IS_READONLY (*pte);
-	return 0;
+static unsigned int addr_is_writeable (unsigned long addr)
+{
+	return arch_addr_is_writeable (addr);
 }
 
 static int is_from_module_or_vmalloc (unsigned long addr)
@@ -540,6 +609,7 @@ static int __init r2k_init (void)
 	int ret;
 
 	pr_info ("%s: PAGE_OFFSET: 0x%lx\n", r2_devname, PAGE_OFFSET);
+	pr_info ("%s: PKMAP_BASE: 0x%lx\n", r2_devname, PKMAP_BASE);
 	pr_info ("%s: loading driver\n", r2_devname);
 	pr_info ("%s: c: %p\n", r2_devname, &c);
 
