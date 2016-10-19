@@ -1,3 +1,8 @@
+
+/*
+	Just tiny program to test the module. Sanity checks not done
+*/
+
 #include <sys/ioctl.h>
 #include <stdio.h>
 #include <string.h>
