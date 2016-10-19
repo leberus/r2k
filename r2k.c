@@ -23,12 +23,19 @@ static char c = 'd';
 
 #define ADDR_OFFSET(x)		(x & (~PAGE_MASK))
 
-#ifdef CONFIG_ARM
+#ifdef CONFIG_ARM	/* arm */
 # define PMD_IS_SECTION(x)	(pmd_val(x) & PMD_TYPE_MASK & PMD_TYPE_SECT)
 # define PMD_IS_TABLE(x)	(pmd_val(x) & PMD_TYPE_MASK & PMD_TYPE_TABLE)
 # define PAGE_IS_PRESENT(x)	pte_present(x)
 # define PAGE_IS_READONLY(x)	pte_write(x)
-#else
+#elif CONFIG_ARM64	/* aarch64 */
+# define PUD_IS_SECTION(x)	(pmd_val(x) & PUD_TYPE_MASK & PUD_TYPE_SECT)
+# define PUD_IS_TABLE(x)	(pmd_val(x) & PUD_TYPE_MASK & PUD_TYPE_TABLE)
+# define PMD_IS_SECTION(x)	(pmd_val(x) & PMD_TYPE_MASK & PMD_TYPE_SECT)
+# define PMD_IS_TABLE(x)	(pmd_val(x) & PMD_TYPE_MASK & PMD_TYPE_TABLE)
+# define PAGE_IS_PRESENT	pte_present(x)
+# define PAGE_IS_READONLY	pte_write(x)
+#else			/* x86- x86_64 */
 # define PAGE_IS_PRESENT(x)	(pte_val (x) & _PAGE_PRESENT)
 # define PAGE_IS_READONLY(x)	(pte_val (x) & _PAGE_RW)
 #endif
@@ -70,7 +77,7 @@ static int io_close (struct inode *inode, struct file *file)
 	return 0;
 }
 
-#ifdef CONFIG_ARM
+#if defined (CONFIG_ARM) || define (CONFIG_ARM64)
 #define TTBR_BITS       0xe
 #define TTBR_MASK       (0x3ffff << TTBR_BITS)
 static pgd_t *get_global_pgd (void)
@@ -88,8 +95,9 @@ static pgd_t *get_global_pgd (void)
 
 	return pgd; 
 }
-	
+#endif
 
+#ifdef CONFIG_ARM
 static pte_t *lookup_address (unsigned long addr)
 {
 	pgd_t *pgd;
@@ -113,6 +121,13 @@ static pte_t *lookup_address (unsigned long addr)
 
 	return pmd;
 }
+#endif
+
+#ifdef CONFIG_ARM64
+static pte_t *lookup_address (unsigned long addr)
+{
+}
+#endif
 
 static pmd_t *virt_to_pmd (unsigned long addr)
 {
@@ -168,7 +183,7 @@ static unsigned int arch_addr_is_writeable (unsigned long addr)
 }
 #endif
 
-#ifdef CONFIG_X86_32 || CONFIG_X86_64
+#if defined (CONFIG_X86_32) || defined (CONFIG_X86_64)
 static pte_t *virt_to_pte (unsigned long addr)
 {
         unsigned int level;
