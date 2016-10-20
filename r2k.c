@@ -339,6 +339,8 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		
 		pr_debug ("%s: IOCTL_READ_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
 								data->addr);
+
+		pr_info ("%s: phys 0x%llx\n", r2_devname, __pa(data->addr));
 	
 		if (!check_kernel_addr (data->addr)) {
 			pr_info ("%s: 0x%lx invalid addr\n", r2_devname, 
@@ -503,7 +505,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	case IOCTL_READ_PHYSICAL_ADDR:
 	case IOCTL_WRITE_PHYSICAL_ADDR:
 
-		pr_debug ("%s: IOCTL_READ_PHYSICAL_ADDR on 0x%lx\n", r2_devname, 
+		pr_debug ("%s: IOCTL_READ/WRITE_PHYSICAL_ADDR on 0x%lx\n", r2_devname, 
 								data->addr);
 		if (!pfn_valid (data->addr >> PAGE_SHIFT)) {
 			pr_info ("%s: 0x%lx out of range\n", r2_devname, data->addr);
@@ -512,7 +514,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		}
 		buffer_r = data->buff;
 
-#ifdef CONFIG_X86_32
+#if defined (CONFIG_X86_32) || defined (CONFIG_ARM)
 		next_aligned_addr = get_next_aligned_addr (data->addr);
 		nr_pages = get_nr_pages (data->addr, next_aligned_addr, len);
 		pr_debug ("%s: next_aligned_addr: 0x%lx\n", r2_devname, 
@@ -639,7 +641,6 @@ static int __init r2k_init (void)
 {
 	int ret;
 
-	pr_info ("%s: PAGE_OFFSET: 0x%lx\n", r2_devname, PAGE_OFFSET);
 	pr_info ("%s: loading driver\n", r2_devname);
 	pr_info ("%s: c: %p\n", r2_devname, &c);
 
