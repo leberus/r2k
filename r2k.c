@@ -29,12 +29,8 @@ static char c = 'd';
 # define PAGE_IS_PRESENT(x)	pte_present(x)
 # define PAGE_IS_READONLY(x)	pte_write(x)
 #elif CONFIG_ARM64	/* aarch64 */
-# define PUD_IS_SECTION(x)	(pmd_val(x) & PUD_TYPE_MASK & PUD_TYPE_SECT)
-# define PUD_IS_TABLE(x)	(pmd_val(x) & PUD_TYPE_MASK & PUD_TYPE_TABLE)
-# define PMD_IS_SECTION(x)	(pmd_val(x) & PMD_TYPE_MASK & PMD_TYPE_SECT)
-# define PMD_IS_TABLE(x)	(pmd_val(x) & PMD_TYPE_MASK & PMD_TYPE_TABLE)
-# define PAGE_IS_PRESENT	pte_present(x)
-# define PAGE_IS_READONLY	pte_write(x)
+# define PAGE_IS_PRESENT(x)	pte_present(x)
+# define PAGE_IS_RW(x)		pte_write(x)
 #else			/* x86- x86_64 */
 # define PAGE_IS_PRESENT(x)	(pte_val (x) & _PAGE_PRESENT)
 # define PAGE_IS_READONLY(x)	(pte_val (x) & _PAGE_RW)
@@ -77,81 +73,88 @@ static int io_close (struct inode *inode, struct file *file)
 	return 0;
 }
 
-#if defined (CONFIG_ARM) || define (CONFIG_ARM64)
+#if defined (CONFIG_ARM) || defined (CONFIG_ARM64)
+# ifdef CONFIG_ARM
 #define TTBR_BITS       0xe
 #define TTBR_MASK       (0x3ffff << TTBR_BITS)
+# else
+#define TTBR_BITS	0x9
+#define TTBR_MASK	(0xffffffffffffffff << TTBR_BITS)
+# endif
 static pgd_t *get_global_pgd (void)
 {
 	pgd_t *pgd;
-	unsigned int ttb_reg;
+	unsigned long ttb_reg;
 
+#ifdef CONFIG_ARM
 	asm volatile (
 	"	mrc	p15, 0, %0, c2, c0, 1"
 	: "=r" (ttb_reg));
+#else
+	asm volatile (
+	"	mrs	%0, TTBR1_EL1"
+	: "=r" (ttb_reg));
+#endif
 	
         ttb_reg &= TTBR_MASK;
         pgd = __va (ttb_reg);
-	pr_info ("%s: get_global_pgd: 0x%0x - %p\n", r2_devname, pgd_val (*pgd), pgd);
+	pr_info ("%s: get_global_pgd: 0x%0llx - %p\n", r2_devname, pgd_val (*pgd), pgd);
 
 	return pgd; 
 }
-#endif
 
-#ifdef CONFIG_ARM
-static pte_t *lookup_address (unsigned long addr)
+static pud_t *lookup_address (unsigned long addr)
 {
 	pgd_t *pgd;
 	pud_t *pud;
-	pmd_t *pmd;
 
 	pgd = get_global_pgd() + pgd_index (addr);
-	pud = pud_offset (pgd, addr);
-	pmd = pmd_offset (pud, addr);
-
 	if (pgd_bad (*pgd))
 		return NULL;
 
+	pud = pud_offset (pgd, addr);
 	if (pud_bad (*pud))
 		return NULL;
-		
-	if (pmd == NULL || pmd_none (*pmd)) {
-		pr_info ("%s: pmd == NULL\n", r2_devname);
-		return NULL;
-	}
 
-	return pmd;
+	return pud;
 }
-#endif
 
-#ifdef CONFIG_ARM64
-static pte_t *lookup_address (unsigned long addr)
-{
-}
-#endif
-
-static pmd_t *virt_to_pmd (unsigned long addr)
+static pud_t *virt_to_pud (unsigned long addr)
 {
 	return lookup_address (addr);
 }
 
 static unsigned int arch_addr_is_mapped (unsigned long addr)
 {
+	pud_t *pud;
 	pmd_t *pmd;
 
-	pmd = virt_to_pmd (addr);
-	if (pmd) {
-		if (PMD_IS_SECTION (*pmd)) {
-			/* Kernel is being mapped using sections (no pte's) */
-			pr_info ("%s: section\n", r2_devname);
+	pud = virt_to_pud (addr);
+	if (pud == NULL || pud_none (*pud)) {
+		pr_debug ("%s: pud == NULL\n", r2_devname);
+		return 0;
+	}
+#ifdef CONFIG_ARM64
+	if (pud_sect (*pud)) {
+		pr_info ("%s: pud_section\n", r2_devname);
+		return pud_present (*pud);;
+	}
+
+	if (!pud_table (*pud))
+		return 0;
+#endif
+	pmd = pmd_offset (pud, addr);
+	if (!pmd_none (*pmd)) {
+		/* Sections are not being marked ro on arm */
+		if (pmd_sect (*pmd)) {
+			pr_debug ("%s: pmd_section\n", r2_devname);
 			return 1;
 		}
 
-		if (PMD_IS_TABLE (*pmd)) {
+		if (pmd_table (*pmd)) {
+			pr_debug ("%s: pmd_table\n", r2_devname);
 			pte_t *pte = pte_offset_kernel (pmd, addr);
-			if (pte_present (*pte)) {
-				pr_info ("%s: pte_present\n", r2_devname);
-				return 1;
-			}
+			return PAGE_IS_PRESENT (*pte);
 		} 
 	}
 
@@ -160,22 +163,35 @@ static unsigned int arch_addr_is_mapped (unsigned long addr)
 
 static unsigned int arch_addr_is_writeable (unsigned long addr)
 {
+	pud_t *pud;
 	pmd_t *pmd;
 
-	pmd = virt_to_pmd (addr);
-	if (pmd) {
-		/* Sections are not being marked ro */
-		if (PMD_IS_SECTION (*pmd)) {
-			pr_info ("%s: section\n", r2_devname);
+	pud = virt_to_pud (addr);
+	if (pud == NULL || pud_none (*pud)) {
+		pr_debug ("%s: pud fail\n", r2_devname);
+		return 0;
+	}
+#ifdef CONFIG_ARM64
+	if (pud_sect (*pud)) {
+		pr_debug ("%s: pud_section\n", r2_devname);
+		return pud_write (*pud);
+	}
+
+	if (!pud_table (*pud))
+		return 0;
+#endif
+	pmd = pmd_offset (pud, addr);
+	if (!pmd_none (*pmd)) {
+		/* Sections are not being marked ro on arm */
+		if (pmd_sect (*pmd)) {
+			pr_debug ("%s: pmd_section\n", r2_devname);
 			return 1;
 		}
 
-		if (PMD_IS_TABLE (*pmd)) {
+		if (pmd_table (*pmd)) {
+			pr_debug ("%s: pmd_table\n", r2_devname);
 			pte_t *pte = pte_offset_kernel (pmd, addr);
-			if (pte_write (*pte)) {
-				pr_info ("%s: pte_write\n", r2_devname);
-				return 1;
-			}
+			return PAGE_IS_RW (*pte);
 		}
 	}
 
@@ -624,7 +640,6 @@ static int __init r2k_init (void)
 	int ret;
 
 	pr_info ("%s: PAGE_OFFSET: 0x%lx\n", r2_devname, PAGE_OFFSET);
-	pr_info ("%s: PKMAP_BASE: 0x%lx\n", r2_devname, PKMAP_BASE);
 	pr_info ("%s: loading driver\n", r2_devname);
 	pr_info ("%s: c: %p\n", r2_devname, &c);
 
