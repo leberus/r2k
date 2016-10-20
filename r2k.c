@@ -24,10 +24,12 @@ static char c = 'd';
 #define ADDR_OFFSET(x)		(x & (~PAGE_MASK))
 
 #ifdef CONFIG_ARM	/* arm */
+# define pmd_sect(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_SECT)
+# define pmd_table(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
 # define PMD_IS_SECTION(x)	(pmd_val(x) & PMD_TYPE_MASK & PMD_TYPE_SECT)
 # define PMD_IS_TABLE(x)	(pmd_val(x) & PMD_TYPE_MASK & PMD_TYPE_TABLE)
 # define PAGE_IS_PRESENT(x)	pte_present(x)
-# define PAGE_IS_READONLY(x)	pte_write(x)
+# define PAGE_IS_RW(x)		pte_write(x)
 #elif CONFIG_ARM64	/* aarch64 */
 # define PAGE_IS_PRESENT(x)	pte_present(x)
 # define PAGE_IS_RW(x)		pte_write(x)
@@ -184,6 +186,7 @@ static unsigned int arch_addr_is_writeable (unsigned long addr)
 	if (!pmd_none (*pmd)) {
 		/* Sections are not being marked ro on arm */
 		if (pmd_sect (*pmd)) {
+
 			pr_debug ("%s: pmd_section\n", r2_devname);
 			return 1;
 		}
