@@ -23,17 +23,15 @@ static char c = 'd';
 
 #define ADDR_OFFSET(x)		(x & (~PAGE_MASK))
 
-#ifdef CONFIG_ARM	/* arm */
+#if defined (CONFIG_ARM) || defined (CONFIG_ANDROID)	/* arm */
 # define pmd_sect(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_SECT)
 # define pmd_table(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
-# define PMD_IS_SECTION(x)	(pmd_val(x) & PMD_TYPE_MASK & PMD_TYPE_SECT)
-# define PMD_IS_TABLE(x)	(pmd_val(x) & PMD_TYPE_MASK & PMD_TYPE_TABLE)
 # define PAGE_IS_PRESENT(x)	pte_present(x)
 # define PAGE_IS_RW(x)		pte_write(x)
-#elif CONFIG_ARM64	/* aarch64 */
+#elif CONFIG_ARM64 			/* aarch64 */
 # define PAGE_IS_PRESENT(x)	pte_present(x)
 # define PAGE_IS_RW(x)		pte_write(x)
-#else			/* x86- x86_64 */
+#else					/* x86- x86_64 */
 # define PAGE_IS_PRESENT(x)	(pte_val (x) & _PAGE_PRESENT)
 # define PAGE_IS_READONLY(x)	(pte_val (x) & _PAGE_RW)
 #endif
@@ -136,7 +134,7 @@ static unsigned int arch_addr_is_mapped (unsigned long addr)
 		pr_debug ("%s: pud == NULL\n", r2_devname);
 		return 0;
 	}
-#ifdef CONFIG_ARM64
+#if defined (CONFIG_ARM64) && !defined (CONFIG_ANDROID)
 	if (pud_sect (*pud)) {
 		pr_info ("%s: pud_section\n", r2_devname);
 		return pud_present (*pud);;
@@ -173,7 +171,7 @@ static unsigned int arch_addr_is_writeable (unsigned long addr)
 		pr_debug ("%s: pud fail\n", r2_devname);
 		return 0;
 	}
-#ifdef CONFIG_ARM64
+#if defined (CONFIG_ARM64) && !defined (CONFIG_ANDROID)
 	if (pud_sect (*pud)) {
 		pr_debug ("%s: pud_section\n", r2_devname);
 		return pud_write (*pud);
