@@ -31,7 +31,7 @@ static char c = 'd';
 #  define pmd_table(x)          ((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
 # endif
 # ifndef pmd_write
-#  ifdef CONFIG_ARM_LPAE
+#  if defined (CONFIG_ARM_LPAE) && defined (PMD_SECT_RDONLY)
 #   define pmd_write(x)		(pmd_val(x) & PMD_SECT_RDONLY)
 #  else
 #   define pmd_write(x)		(pmd_val(x) & PMD_SECT_AP_WRITE)
@@ -43,7 +43,7 @@ static char c = 'd';
 # else
 #  define PAGE_IS_RW(x)		!(pte_val(x) & PTE_RDONLY)
 # endif
-#elif CONFIG_ARM64
+#elif defined CONFIG_ARM64
 # define PAGE_IS_PRESENT(x)	pte_present(x)
 # define PAGE_IS_RW(x)		pte_write(x)
 #else
@@ -51,28 +51,6 @@ static char c = 'd';
 # define PAGE_IS_READONLY(x)	(pte_val (x) & _PAGE_RW)
 #endif
 
-
-
-
-/*#if defined (CONFIG_ARM) || defined (CONFIG_ANDROID)	
-# ifndef pmd_sect
-#  define pmd_sect(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_SECT)
-# endif
-# ifndef pmd_sect
-#  define pmd_table(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
-# endif
-# ifndef pmd_write
-#  define pmd_write		(pmd_val(x) & PMD_SECT_AP_WRITE)
-#endif
-# define PAGE_IS_PRESENT(x)	pte_present(x)
-# define PAGE_IS_RW(x)		!(pte_val(x) & PTE_RDONLY)
-#elif CONFIG_ARM64 			
-# define PAGE_IS_PRESENT(x)	pte_present(x)
-# define PAGE_IS_RW(x)		pte_write(x)
-#else					
-# define PAGE_IS_PRESENT(x)	(pte_val (x) & _PAGE_PRESENT)
-# define PAGE_IS_READONLY(x)	(pte_val (x) & _PAGE_RW)
-#endif */
 
 #define R2_TYPE 0x69
 
@@ -151,9 +129,9 @@ static pud_t *lookup_address (unsigned long addr)
 		return NULL;
 
 	pud = pud_offset (pgd, addr);
-	if (pud_bad (*pud))
+	if (pud_bad (*pud)) 
 		return NULL;
-
+	
 	return pud;
 }
 
