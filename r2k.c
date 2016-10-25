@@ -23,18 +23,56 @@ static char c = 'd';
 
 #define ADDR_OFFSET(x)		(x & (~PAGE_MASK))
 
-#if defined (CONFIG_ARM) || defined (CONFIG_ANDROID)	/* arm */
-# define pmd_sect(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_SECT)
-# define pmd_table(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
+#if defined (CONFIG_ARM) || defined (CONFIG_ANDROID)
+# ifndef pmd_sect
+#  define pmd_sect(x)           ((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_SECT)
+# endif
+# ifndef pmd_sect
+#  define pmd_table(x)          ((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
+# endif
+# ifndef pmd_write
+#  ifdef CONFIG_ARM_LPAE
+#   define pmd_write		(pmd_val(x) & PMD_SECT_RDONLY)
+#  else
+#   define pmd_write		(pmd_val(x) & PMD_SECT_AP_WRITE)
+#  endif
+# endif
+# define PAGE_IS_PRESENT(x)	pte_present(x)
+# ifdef CONFIG_ARM
+#  define PAGE_IS_RW(x)		pte_write(x)
+# else
+#  define PAGE_IS_RW(x)		!(pte_val(x) & PTE_RDONLY)
+# endif
+#elif CONFIG_ARM64
 # define PAGE_IS_PRESENT(x)	pte_present(x)
 # define PAGE_IS_RW(x)		pte_write(x)
-#elif CONFIG_ARM64 			/* aarch64 */
-# define PAGE_IS_PRESENT(x)	pte_present(x)
-# define PAGE_IS_RW(x)		pte_write(x)
-#else					/* x86- x86_64 */
+#else
 # define PAGE_IS_PRESENT(x)	(pte_val (x) & _PAGE_PRESENT)
 # define PAGE_IS_READONLY(x)	(pte_val (x) & _PAGE_RW)
 #endif
+
+
+
+
+/*#if defined (CONFIG_ARM) || defined (CONFIG_ANDROID)	
+# ifndef pmd_sect
+#  define pmd_sect(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_SECT)
+# endif
+# ifndef pmd_sect
+#  define pmd_table(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
+# endif
+# ifndef pmd_write
+#  define pmd_write		(pmd_val(x) & PMD_SECT_AP_WRITE)
+#endif
+# define PAGE_IS_PRESENT(x)	pte_present(x)
+# define PAGE_IS_RW(x)		!(pte_val(x) & PTE_RDONLY)
+#elif CONFIG_ARM64 			
+# define PAGE_IS_PRESENT(x)	pte_present(x)
+# define PAGE_IS_RW(x)		pte_write(x)
+#else					
+# define PAGE_IS_PRESENT(x)	(pte_val (x) & _PAGE_PRESENT)
+# define PAGE_IS_READONLY(x)	(pte_val (x) & _PAGE_RW)
+#endif */
 
 #define R2_TYPE 0x69
 
@@ -131,7 +169,7 @@ static unsigned int arch_addr_is_mapped (unsigned long addr)
 
 	pud = virt_to_pud (addr);
 	if (pud == NULL || pud_none (*pud)) {
-		pr_debug ("%s: pud == NULL\n", r2_devname);
+		pr_info ("%s: pud == NULL\n", r2_devname);
 		return 0;
 	}
 #if defined (CONFIG_ARM64) && !defined (CONFIG_ANDROID)
@@ -145,14 +183,13 @@ static unsigned int arch_addr_is_mapped (unsigned long addr)
 #endif
 	pmd = pmd_offset (pud, addr);
 	if (!pmd_none (*pmd)) {
-		/* Sections are not being marked ro on arm */
 		if (pmd_sect (*pmd)) {
-			pr_debug ("%s: pmd_section\n", r2_devname);
+			pr_info ("%s: pmd_section\n", r2_devname);
 			return 1;
 		}
 
 		if (pmd_table (*pmd)) {
-			pr_debug ("%s: pmd_table\n", r2_devname);
+			pr_info ("%s: pmd_table\n", r2_devname);
 			pte_t *pte = pte_offset_kernel (pmd, addr);
 			return PAGE_IS_PRESENT (*pte);
 		} 
@@ -167,13 +204,14 @@ static unsigned int arch_addr_is_writeable (unsigned long addr)
 	pmd_t *pmd;
 
 	pud = virt_to_pud (addr);
+	pr_info ("%s: arch_addr_is_writeable\n", r2_devname);
 	if (pud == NULL || pud_none (*pud)) {
-		pr_debug ("%s: pud fail\n", r2_devname);
+		pr_info ("%s: pud fail\n", r2_devname);
 		return 0;
 	}
 #if defined (CONFIG_ARM64) && !defined (CONFIG_ANDROID)
 	if (pud_sect (*pud)) {
-		pr_debug ("%s: pud_section\n", r2_devname);
+		pr_info ("%s: pud_section\n", r2_devname);
 		return pud_write (*pud);
 	}
 
@@ -184,15 +222,20 @@ static unsigned int arch_addr_is_writeable (unsigned long addr)
 	if (!pmd_none (*pmd)) {
 		/* Sections are not being marked ro on arm */
 		if (pmd_sect (*pmd)) {
-
-			pr_debug ("%s: pmd_section\n", r2_devname);
-			return 1;
+			pr_info ("%s: pmd_section\n", r2_devname);
+			return pmd_write (*pmd);
 		}
 
 		if (pmd_table (*pmd)) {
-			pr_debug ("%s: pmd_table\n", r2_devname);
+			pr_info ("%s: pmd_table\n", r2_devname);
 			pte_t *pte = pte_offset_kernel (pmd, addr);
-			return PAGE_IS_RW (*pte);
+			if (pte == NULL) {
+				pr_info ("%s: pte_offset_kernel null\n", r2_devname);
+				return 0;
+			} else {
+				pr_info ("%s: pte_offset_kernel OK\n", r2_devname);
+				return PAGE_IS_RW (*pte);
+			}
 		}
 	}
 
@@ -271,7 +314,7 @@ static int get_nr_pages (unsigned long addr, unsigned long next_aligned_addr,
 				: len / PAGE_SIZE;
 	}
 
-	pr_debug ("%s: nr pages %d\n", r2_devname, nr_pages);		
+	pr_info ("%s: nr pages %d\n", r2_devname, nr_pages);		
 	return nr_pages;
 }
 
@@ -338,7 +381,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 	case IOCTL_READ_KERNEL_MEMORY:
 		
-		pr_debug ("%s: IOCTL_READ_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
+		pr_info ("%s: IOCTL_READ_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
 								data->addr);
 
 		pr_info ("%s: phys 0x%llx\n", r2_devname, __pa(data->addr));
@@ -367,7 +410,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 	case IOCTL_WRITE_KERNEL_MEMORY:
 
-		pr_debug ("%s: IOCTL_WRITE_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
+		pr_info ("%s: IOCTL_WRITE_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
 								data->addr);
 
 		if (!check_kernel_addr (data->addr)) {
@@ -396,7 +439,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	case IOCTL_READ_PROCESS_ADDR:
 	case IOCTL_WRITE_PROCESS_ADDR:
 
-		pr_debug ("%s: IOCTL_READ/WRITE_PROCESS_ADDR at 0x%lx" 
+		pr_info ("%s: IOCTL_READ/WRITE_PROCESS_ADDR at 0x%lx" 
 						"from pid (%d) bytes (%ld)\n", 
 						r2_devname, data->addr, 
 						data->pid, data->len);
@@ -421,7 +464,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			goto out;
 		}
 			
-		pr_debug ("%s: vma->vm_start - vma->vm_end, 0x%lx - 0x%lx\n", 
+		pr_info ("%s: vma->vm_start - vma->vm_end, 0x%lx - 0x%lx\n", 
 						r2_devname, vma->vm_start, 
 								vma->vm_end);
 
@@ -438,7 +481,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		
 		next_aligned_addr = get_next_aligned_addr (data->addr);
 		nr_pages = get_nr_pages (data->addr, next_aligned_addr, len);
-		pr_debug ("%s: next_aligned_addr 0x%lx\n", r2_devname, 
+		pr_info ("%s: next_aligned_addr 0x%lx\n", r2_devname, 
 							next_aligned_addr);
 			
 		down_read (&task->mm->mmap_sem);
@@ -465,8 +508,8 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			bytes = get_bytes_to_rw (data->addr, len, 
 							next_aligned_addr);
 			kaddr = map_addr (pg, data->addr);
-			pr_debug ("%s: kaddr 0x%p\n", r2_devname, kaddr);
-			pr_debug ("%s: reading %d bytes\n", r2_devname, bytes);
+			pr_info ("%s: kaddr 0x%p\n", r2_devname, kaddr);
+			pr_info ("%s: reading %d bytes\n", r2_devname, bytes);
 
 			if (!addr_is_mapped ( (unsigned long)kaddr)) {
                         	pr_info ("%s: addr is not mapped," 
@@ -506,7 +549,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	case IOCTL_READ_PHYSICAL_ADDR:
 	case IOCTL_WRITE_PHYSICAL_ADDR:
 
-		pr_debug ("%s: IOCTL_READ/WRITE_PHYSICAL_ADDR on 0x%lx\n", r2_devname, 
+		pr_info ("%s: IOCTL_READ/WRITE_PHYSICAL_ADDR on 0x%lx\n", r2_devname, 
 								data->addr);
 		if (!pfn_valid (data->addr >> PAGE_SHIFT)) {
 			pr_info ("%s: 0x%lx out of range\n", r2_devname, data->addr);
@@ -518,7 +561,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 #if defined (CONFIG_X86_32) || defined (CONFIG_ARM)
 		next_aligned_addr = get_next_aligned_addr (data->addr);
 		nr_pages = get_nr_pages (data->addr, next_aligned_addr, len);
-		pr_debug ("%s: next_aligned_addr: 0x%lx\n", r2_devname, 
+		pr_info ("%s: next_aligned_addr: 0x%lx\n", r2_devname, 
 							next_aligned_addr);
 	
 		for (page_i = 0 ; page_i < nr_pages ; page_i++) {
@@ -532,10 +575,10 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 			pg = pfn_to_page (data->addr >> PAGE_SHIFT);
 			kaddr = map_addr (pg, data->addr);
-			pr_debug ("%s: kaddr: 0x%p\n", r2_devname, kaddr);
-			pr_debug ("%s: kaddr - offset: 0x%p\n", r2_devname, 
+			pr_info ("%s: kaddr: 0x%p\n", r2_devname, kaddr);
+			pr_info ("%s: kaddr - offset: 0x%p\n", r2_devname, 
 					kaddr - (data->addr & (~PAGE_MASK)));
-			pr_debug ("%s: reading %d bytes\n", r2_devname, bytes);
+			pr_info ("%s: reading %d bytes\n", r2_devname, bytes);
 
 			if (_IOC_NR (cmd) == IOCTL_READ_PHYSICAL_ADDR)
 				ret = copy_to_user (buffer_r, kaddr, bytes);
@@ -595,7 +638,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 	case IOCTL_GET_KERNEL_MAP:
 	
-		pr_debug ("%s: IOCTL_GET_KERNEL_MAP\n", r2_devname);
+		pr_info ("%s: IOCTL_GET_KERNEL_MAP\n", r2_devname);
 
 		/*
 			Areas
@@ -644,6 +687,7 @@ static int __init r2k_init (void)
 
 	pr_info ("%s: loading driver\n", r2_devname);
 	pr_info ("%s: c: %p\n", r2_devname, &c);
+	pr_info ("%s: alloc_chrdev_region: %p\n", r2_devname, alloc_chrdev_region);
 
 	get_global_pgd ();	
 
