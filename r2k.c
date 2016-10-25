@@ -27,7 +27,7 @@ static char c = 'd';
 # ifndef pmd_sect
 #  define pmd_sect(x)           ((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_SECT)
 # endif
-# ifndef pmd_sect
+# ifndef pmd_table
 #  define pmd_table(x)          ((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
 # endif
 # ifndef pmd_write
