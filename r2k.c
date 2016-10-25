@@ -32,9 +32,9 @@ static char c = 'd';
 # endif
 # ifndef pmd_write
 #  ifdef CONFIG_ARM_LPAE
-#   define pmd_write		(pmd_val(x) & PMD_SECT_RDONLY)
+#   define pmd_write(x)		(pmd_val(x) & PMD_SECT_RDONLY)
 #  else
-#   define pmd_write		(pmd_val(x) & PMD_SECT_AP_WRITE)
+#   define pmd_write(x)		(pmd_val(x) & PMD_SECT_AP_WRITE)
 #  endif
 # endif
 # define PAGE_IS_PRESENT(x)	pte_present(x)
