@@ -182,7 +182,6 @@ static unsigned int arch_addr_is_mapped (unsigned long addr)
 	pmd = pmd_offset (pud, addr);
 	pr_info ("%s: 0x%llx - %p\n", r2_devname, pmd_val (*pmd), pmd);
 	if (!pmd_none (*pmd)) {
-		pr_info ("%s: pmd_none\n", r2_devname);
 		if (pmd_sect (*pmd)) {
 			pr_info ("%s: pmd_section\n", r2_devname);
 			return 1;
@@ -195,7 +194,6 @@ static unsigned int arch_addr_is_mapped (unsigned long addr)
 		} 
 	}
 
-	pr_info ("%s: out if\n", r2_devname);
 	return 0;
 }
 
