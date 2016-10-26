@@ -112,6 +112,7 @@ static pgd_t *get_global_pgd (void)
 	unsigned long low, high;
 	unsigned long int ttbcr;
 
+	pr_info (
 	asm volatile (
 	"	mrc p15, 0, %0, c2, c0, 2"
 	: "=r" (ttbcr));
@@ -136,7 +137,7 @@ static pgd_t *get_global_pgd (void)
 	
         ttb_reg &= TTBR_MASK;
         pgd = __va (ttb_reg);
-	pr_info ("%s: get_global_pgd: 0x%0llx - %p\n", r2_devname, pgd_val (*pgd), pgd);
+//	pr_info ("%s: get_global_pgd: 0x%0llx - %p\n", r2_devname, pgd_val (*pgd), pgd);
 
 	return pgd; 
 }
@@ -151,7 +152,7 @@ static pud_t *lookup_address (unsigned long addr)
 		return NULL;
 
 	pud = pud_offset (pgd, addr);
-	pr_info ("%s: pud_offset: 0x%llx - %p\n", r2_devname, pud_val (*pud), pud);
+//	pr_info ("%s: pud_offset: 0x%llx - %p\n", r2_devname, pud_val (*pud), pud);
 	return pud;
 }
 
@@ -180,7 +181,7 @@ static unsigned int arch_addr_is_mapped (unsigned long addr)
 		return 0;
 #endif
 	pmd = pmd_offset (pud, addr);
-	pr_info ("%s: 0x%llx - %p\n", r2_devname, pmd_val (*pmd), pmd);
+//	pr_info ("%s: 0x%x - %p\n", r2_devname, pmd_val (*pmd), pmd);
 	if (!pmd_none (*pmd)) {
 		if (pmd_sect (*pmd)) {
 			pr_info ("%s: pmd_section\n", r2_devname);
