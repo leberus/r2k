@@ -91,11 +91,16 @@ static int io_close (struct inode *inode, struct file *file)
 
 #if defined (CONFIG_ARM) || defined (CONFIG_ARM64)
 # ifdef CONFIG_ARM
-#define TTBR_BITS       0xe
-#define TTBR_MASK       (0x3ffff << TTBR_BITS)
+#  ifdef CONFIG_ARM_LPAE
+#	define TTBR_MASK	0xffffffffffffffff
+//#	define TTBR_MASK	~(PTRS_PER_PGD*sizeof(pgd_t)-1)
+#  else
+#	define TTBR_BITS	0xe
+#	define TTBR_MASK	(0x3ffff << TTBR_BITS)
+# endif
 # else
-#define TTBR_BITS	0x9
-#define TTBR_MASK	(0xffffffffffffffff << TTBR_BITS)
+#define TTBR_BITS		0x9
+#define TTBR_MASK		(0xffffffffffffffff << TTBR_BITS)
 # endif
 static pgd_t *get_global_pgd (void)
 {
@@ -103,9 +108,26 @@ static pgd_t *get_global_pgd (void)
 	unsigned long ttb_reg;
 
 #ifdef CONFIG_ARM
+# ifdef CONFIG_ARM_LPAE
+	unsigned long low, high;
+	unsigned long int ttbcr;
+
+	asm volatile (
+	"	mrc p15, 0, %0, c2, c0, 2"
+	: "=r" (ttbcr));
+
+	asm volatile (
+	"       mrrc    p15, 1, %0, %1, c2"
+	: "=r" (low), "=r" (high)
+	:
+	: "cc");
+
+	ttb_reg = low;
+# else
 	asm volatile (
 	"	mrc	p15, 0, %0, c2, c0, 1"
 	: "=r" (ttb_reg));
+# endif
 #else
 	asm volatile (
 	"	mrs	%0, TTBR1_EL1"
@@ -125,13 +147,11 @@ static pud_t *lookup_address (unsigned long addr)
 	pud_t *pud;
 
 	pgd = get_global_pgd() + pgd_index (addr);
-	if (pgd_bad (*pgd))
+	if (pgd_bad (*pgd)) 
 		return NULL;
 
 	pud = pud_offset (pgd, addr);
-	if (pud_bad (*pud)) 
-		return NULL;
-	
+	pr_info ("%s: pud_offset: 0x%llx - %p\n", r2_devname, pud_val (*pud), pud);
 	return pud;
 }
 
@@ -160,7 +180,9 @@ static unsigned int arch_addr_is_mapped (unsigned long addr)
 		return 0;
 #endif
 	pmd = pmd_offset (pud, addr);
+	pr_info ("%s: 0x%llx - %p\n", r2_devname, pmd_val (*pmd), pmd);
 	if (!pmd_none (*pmd)) {
+		pr_info ("%s: pmd_none\n", r2_devname);
 		if (pmd_sect (*pmd)) {
 			pr_info ("%s: pmd_section\n", r2_devname);
 			return 1;
@@ -173,6 +195,7 @@ static unsigned int arch_addr_is_mapped (unsigned long addr)
 		} 
 	}
 
+	pr_info ("%s: out if\n", r2_devname);
 	return 0;
 }
 
