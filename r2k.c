@@ -14,43 +14,12 @@
 #include <linux/version.h>
 #include <linux/utsname.h>
 
-static char c = 'd';
-
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,6,0)
 #define get_user_pages		get_user_pages_remote
 #define page_cache_release	put_page
 #endif
 
 #define ADDR_OFFSET(x)		(x & (~PAGE_MASK))
-
-#if defined (CONFIG_ARM) || defined (CONFIG_ANDROID)
-# ifndef pmd_sect
-#  define pmd_sect(x)           ((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_SECT)
-# endif
-# ifndef pmd_table
-#  define pmd_table(x)          ((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
-# endif
-# ifndef pmd_write
-#  if defined (CONFIG_ARM_LPAE) && defined (PMD_SECT_RDONLY)
-#   define pmd_write(x)		(pmd_val(x) & PMD_SECT_RDONLY)
-#  else
-#   define pmd_write(x)		(pmd_val(x) & PMD_SECT_AP_WRITE)
-#  endif
-# endif
-# define PAGE_IS_PRESENT(x)	pte_present(x)
-# ifdef CONFIG_ARM
-#  define PAGE_IS_RW(x)		pte_write(x)
-# else
-#  define PAGE_IS_RW(x)		!(pte_val(x) & PTE_RDONLY)
-# endif
-#elif defined CONFIG_ARM64
-# define PAGE_IS_PRESENT(x)	pte_present(x)
-# define PAGE_IS_RW(x)		pte_write(x)
-#else
-# define PAGE_IS_PRESENT(x)	(pte_val (x) & _PAGE_PRESENT)
-# define PAGE_IS_READONLY(x)	(pte_val (x) & _PAGE_RW)
-#endif
-
 
 #define R2_TYPE 0x69
 
@@ -79,6 +48,9 @@ struct r2k_data {
 	void __user *buff;
 };
 
+extern int addr_is_writeable (unsigned long addr);
+extern int addr_is_mapped (unsigned long addr);
+
 static int io_open (struct inode *inode, struct file *file)
 {
 	return 0;
@@ -87,198 +59,6 @@ static int io_open (struct inode *inode, struct file *file)
 static int io_close (struct inode *inode, struct file *file)
 {
 	return 0;
-}
-
-#if defined (CONFIG_ARM) || defined (CONFIG_ARM64)
-# ifdef CONFIG_ARM
-#  ifdef CONFIG_ARM_LPAE
-#	define TTBR_MASK	0xffffffffffffffff
-//#	define TTBR_MASK	~(PTRS_PER_PGD*sizeof(pgd_t)-1)
-#  else
-#	define TTBR_BITS	0xe
-#	define TTBR_MASK	(0x3ffff << TTBR_BITS)
-# endif
-# else
-#define TTBR_BITS		0x9
-#define TTBR_MASK		(0xffffffffffffffff << TTBR_BITS)
-# endif
-static pgd_t *get_global_pgd (void)
-{
-	pgd_t *pgd;
-	unsigned long ttb_reg;
-
-#ifdef CONFIG_ARM
-# ifdef CONFIG_ARM_LPAE
-	unsigned long low, high;
-	unsigned long int ttbcr;
-
-	pr_info (
-	asm volatile (
-	"	mrc p15, 0, %0, c2, c0, 2"
-	: "=r" (ttbcr));
-
-	asm volatile (
-	"       mrrc    p15, 1, %0, %1, c2"
-	: "=r" (low), "=r" (high)
-	:
-	: "cc");
-
-	ttb_reg = low;
-# else
-	asm volatile (
-	"	mrc	p15, 0, %0, c2, c0, 1"
-	: "=r" (ttb_reg));
-# endif
-#else
-	asm volatile (
-	"	mrs	%0, TTBR1_EL1"
-	: "=r" (ttb_reg));
-#endif
-	
-        ttb_reg &= TTBR_MASK;
-        pgd = __va (ttb_reg);
-//	pr_info ("%s: get_global_pgd: 0x%0llx - %p\n", r2_devname, pgd_val (*pgd), pgd);
-
-	return pgd; 
-}
-
-static pud_t *lookup_address (unsigned long addr)
-{
-	pgd_t *pgd;
-	pud_t *pud;
-
-	pgd = get_global_pgd() + pgd_index (addr);
-	if (pgd_bad (*pgd)) 
-		return NULL;
-
-	pud = pud_offset (pgd, addr);
-//	pr_info ("%s: pud_offset: 0x%llx - %p\n", r2_devname, pud_val (*pud), pud);
-	return pud;
-}
-
-static pud_t *virt_to_pud (unsigned long addr)
-{
-	return lookup_address (addr);
-}
-
-static unsigned int arch_addr_is_mapped (unsigned long addr)
-{
-	pud_t *pud;
-	pmd_t *pmd;
-
-	pud = virt_to_pud (addr);
-	if (pud == NULL || pud_none (*pud)) {
-		pr_info ("%s: pud == NULL\n", r2_devname);
-		return 0;
-	}
-#if defined (CONFIG_ARM64) && !defined (CONFIG_ANDROID)
-	if (pud_sect (*pud)) {
-		pr_info ("%s: pud_section\n", r2_devname);
-		return pud_present (*pud);;
-	}
-
-	if (!pud_table (*pud))
-		return 0;
-#endif
-	pmd = pmd_offset (pud, addr);
-//	pr_info ("%s: 0x%x - %p\n", r2_devname, pmd_val (*pmd), pmd);
-	if (!pmd_none (*pmd)) {
-		if (pmd_sect (*pmd)) {
-			pr_info ("%s: pmd_section\n", r2_devname);
-			return 1;
-		}
-
-		if (pmd_table (*pmd)) {
-			pr_info ("%s: pmd_table\n", r2_devname);
-			pte_t *pte = pte_offset_kernel (pmd, addr);
-			return PAGE_IS_PRESENT (*pte);
-		} 
-	}
-
-	return 0;
-}
-
-static unsigned int arch_addr_is_writeable (unsigned long addr)
-{
-	pud_t *pud;
-	pmd_t *pmd;
-
-	pud = virt_to_pud (addr);
-	pr_info ("%s: arch_addr_is_writeable\n", r2_devname);
-	if (pud == NULL || pud_none (*pud)) {
-		pr_info ("%s: pud fail\n", r2_devname);
-		return 0;
-	}
-#if defined (CONFIG_ARM64) && !defined (CONFIG_ANDROID)
-	if (pud_sect (*pud)) {
-		pr_info ("%s: pud_section\n", r2_devname);
-		return pud_write (*pud);
-	}
-
-	if (!pud_table (*pud))
-		return 0;
-#endif
-	pmd = pmd_offset (pud, addr);
-	if (!pmd_none (*pmd)) {
-		/* Sections are not being marked ro on arm */
-		if (pmd_sect (*pmd)) {
-			pr_info ("%s: pmd_section\n", r2_devname);
-			return pmd_write (*pmd);
-		}
-
-		if (pmd_table (*pmd)) {
-			pr_info ("%s: pmd_table\n", r2_devname);
-			pte_t *pte = pte_offset_kernel (pmd, addr);
-			if (pte == NULL) {
-				pr_info ("%s: pte_offset_kernel null\n", r2_devname);
-				return 0;
-			} else {
-				pr_info ("%s: pte_offset_kernel OK\n", r2_devname);
-				return PAGE_IS_RW (*pte);
-			}
-		}
-	}
-
-	return 0;	
-}
-#endif
-
-#if defined (CONFIG_X86_32) || defined (CONFIG_X86_64)
-static pte_t *virt_to_pte (unsigned long addr)
-{
-        unsigned int level;
-        return lookup_address (addr, &level);
-}
-
-static unsigned int arch_addr_is_mapped (unsigned long addr)
-{
-	pte_t *pte;
-
-	pte = virt_to_pte (addr);
-	if (pte)
-		return PAGE_IS_PRESENT (*pte);
-	return 0;
-}
-
-static unsigned int arch_addr_is_writeable (unsigned long addr)
-{
-	pte_t *pte;
-
-	pte = virt_to_pte (addr);	
-	if (pte)
-		return PAGE_IS_READONLY (*pte);
-	return 0;
-}
-#endif
-
-static unsigned int addr_is_mapped (unsigned long addr)
-{
-	return arch_addr_is_mapped (addr);
-}
-
-static unsigned int addr_is_writeable (unsigned long addr)
-{
-	return arch_addr_is_writeable (addr);
 }
 
 static int is_from_module_or_vmalloc (unsigned long addr)
@@ -313,8 +93,6 @@ static int get_nr_pages (unsigned long addr, unsigned long next_aligned_addr,
 				? len / PAGE_SIZE + 1 
 				: len / PAGE_SIZE;
 	}
-
-	pr_info ("%s: nr pages %d\n", r2_devname, nr_pages);		
 	return nr_pages;
 }
 
@@ -384,7 +162,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		pr_info ("%s: IOCTL_READ_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
 								data->addr);
 
-		pr_info ("%s: phys 0x%llx\n", r2_devname, __pa(data->addr));
+		pr_info ("%s: phys 0x%x\n", r2_devname, __pa(data->addr));
 	
 		if (!check_kernel_addr (data->addr)) {
 			pr_info ("%s: 0x%lx invalid addr\n", r2_devname, 
@@ -561,8 +339,6 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 #if defined (CONFIG_X86_32) || defined (CONFIG_ARM)
 		next_aligned_addr = get_next_aligned_addr (data->addr);
 		nr_pages = get_nr_pages (data->addr, next_aligned_addr, len);
-		pr_info ("%s: next_aligned_addr: 0x%lx\n", r2_devname, 
-							next_aligned_addr);
 	
 		for (page_i = 0 ; page_i < nr_pages ; page_i++) {
 
@@ -686,10 +462,7 @@ static int __init r2k_init (void)
 	int ret;
 
 	pr_info ("%s: loading driver\n", r2_devname);
-	pr_info ("%s: c: %p\n", r2_devname, &c);
 	pr_info ("%s: alloc_chrdev_region: %p\n", r2_devname, alloc_chrdev_region);
-
-	get_global_pgd ();	
 
 	ret = alloc_chrdev_region (&devno, 0, 1, r2_devname);
 	if (ret < 0) {
