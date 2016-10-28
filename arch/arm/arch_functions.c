@@ -103,8 +103,6 @@ static int check_addr (unsigned long addr, int type)
 	pud_t *pud;
 	pmd_t *pmd;
 
-	pr_info ("%s: check_addr - 0x%lx\n", r2_devname, addr);
-	pr_info ("%s: type: %d\n", r2_devname, type);
 	pud = virt_to_pud (addr);
 	if (pud == NULL || pud_none (*pud)) {
 		pr_info ("%s: pud null\n", r2_devname);
@@ -122,13 +120,9 @@ static int check_addr (unsigned long addr, int type)
 	pmd = pmd_offset (pud, addr);
 	if (!pmd_none (*pmd)) {
 		if (pmd_sect (*pmd)) {
-			pr_info ("%s: pmd_sect\n", r2_devname);
-			pr_info ("%s: type: %d\n", r2_devname, type);
-			pr_info ("%s: pmd: 0x%x\n", r2_devname, pmd_val (*pmd));
-			return 1;
-/*			return type == WRITE_TYPE
+			return type == WRITE_TYPE
 				? pmd_write (*pmd)
-				: pmd_present (*pmd); */
+				: pmd_present (*pmd); 
 		}
 
 		if (pmd_table (*pmd)) {
@@ -145,7 +139,6 @@ static int check_addr (unsigned long addr, int type)
 	
 int addr_is_writeable (unsigned long addr)
 {
-	pr_info ("%s: addr_is_writeable\n", r2_devname);
 	return check_addr (addr, WRITE_TYPE);
 }
 
