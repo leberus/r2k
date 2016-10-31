@@ -1,14 +1,16 @@
+ARCH=$(shell uname -m)
 
-ifeq ($(filter arm,$(shell arch)),)
-        FOLDER := arm
-else ifeq ($(filter aarch64, $(shell arch)),)
+ifeq ($(ARCH), x86_64)
+	FOLDER := x86
+else ifeq ($(ARCH), arm)
 	FOLDER := arm
-else ifeq ($(filter x86,$(shell arch)),)
-        FOLDER := x86
+else ifeq ($(ARCH), i686)
+	FOLDER := x86
+else ifeq ($(ARCH), arm)
+	FOLDER := arm
 else
         $(error Bad architecture)
 endif
-
 
 obj-m += r2kmod.o
 r2kmod-objs := r2k.o arch/$(FOLDER)/arch_functions.o

@@ -1,3 +1,5 @@
+#include <linux/mm.h>
+
 # define PAGE_IS_PRESENT(x)     (pte_val (x) & _PAGE_PRESENT)
 # define PAGE_IS_READONLY(x)    (pte_val (x) & _PAGE_RW)
 
@@ -7,7 +9,7 @@ static pte_t *virt_to_pte (unsigned long addr)
 	return lookup_address (addr, &level);
 }
 
-static int addr_is_mapped (unsigned long addr)
+int addr_is_mapped (unsigned long addr)
 {
 	pte_t *pte;
 	
@@ -17,7 +19,7 @@ static int addr_is_mapped (unsigned long addr)
 	return 0;
 }
 
-static unsigned int addr_is_writeable (unsigned long addr)
+int addr_is_writeable (unsigned long addr)
 {
 	pte_t *pte;
 	
