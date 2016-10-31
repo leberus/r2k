@@ -265,7 +265,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		down_read (&task->mm->mmap_sem);
 		for (page_i = 0 ; page_i < nr_pages ; page_i++ ) {
 
-			struct page *pg;
+			struct page *pg = NULL;;
 			void *kaddr;
 			int bytes;
 
@@ -279,7 +279,8 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 							"from pid (%d)\n", 
 							r2_devname, data->pid);
 				ret = -ESRCH;
-        			page_cache_release (pg);
+				if (pg)
+	        			page_cache_release (pg);
 				goto out_loop;
 			}
 
@@ -294,7 +295,8 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 						"triggering a fault\n", 
 								r2_devname);
 				unmap_addr (kaddr, data->addr);
-				page_cache_release (pg);
+				if (pg)
+					page_cache_release (pg);
 				goto out_loop;
 			} 
 
@@ -308,7 +310,8 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 								r2_devname);
 				ret = -EFAULT;
 				unmap_addr (kaddr, data->addr);
-        			page_cache_release (pg);
+				if (pg)
+	        			page_cache_release (pg);
 				goto out_loop;
 			}
 
@@ -317,7 +320,8 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			next_aligned_addr += PAGE_SIZE;
 			len -= bytes;
 			unmap_addr (kaddr, data->addr);
-			page_cache_release (pg);
+			if (pg)
+				page_cache_release (pg);
 		}
 
 	out_loop:
