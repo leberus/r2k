@@ -1,24 +1,9 @@
 #ifndef __ARM_LPAE_DEFINITIONS_H
 #define __ARM_LPAE_DEFINITIONS_H
 
-#ifndef pmd_sect
-#  define pmd_sect(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_SECT)
-#endif
-
-#ifndef pmd_table
-#  define pmd_table(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
-#endif
-
-#ifndef pmd_write && defined (PMD_SECT_RDONLY)
-#  define pmd_write(x)		(pmd_val(x) & PMD_SECT_RDONLY)
-#endif
-
-#define PAGE_IS_RW(x)		!(pte_val(x) & PTE_RDONLY)
-#define PAGE_IS_PRESENT(x)	pte_present(x)
-
 static pgd_t *get_global_pgd (void)
 {
-	unsigned long ttb_reg, how, high;
+	unsigned long ttb_reg, low, high;
 	
 	asm volatile (
 	"       mrrc    p15, 1, %0, %1, c2"

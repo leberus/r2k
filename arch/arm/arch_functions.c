@@ -13,6 +13,21 @@
 #include "arm_definitions.h"
 #endif
 
+#ifndef pmd_sect
+# define pmd_sect(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_SECT)
+#endif
+
+#ifndef pmd_table
+# define pmd_table(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
+#endif
+
+#if !defined (pmd_write) && !defined (CONFIG_DEBUG_RODATA)
+#  define pmd_write(x)		(1)
+#endif
+
+#define PAGE_IS_RW(x)           pte_write(x)
+#define PAGE_IS_PRESENT(x)      pte_present(x)
+
 #define WRITE_TYPE	 	0x1
 #define PRESENT_TYPE		0x2
 
@@ -58,9 +73,10 @@ static int check_addr (unsigned long addr, int type)
 	pmd = pmd_offset (pud, addr);
 	if (!pmd_none (*pmd)) {
 		if (pmd_sect (*pmd)) {
+			pr_info ("%s: pmd_sect\n", r2_devname);
 			return type == WRITE_TYPE
 				? pmd_write (*pmd)
-				: pmd_present (*pmd); 
+				: pmd_present (*pmd);  
 		}
 
 		if (pmd_table (*pmd)) {
