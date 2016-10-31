@@ -368,7 +368,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 					ret = -EPERM;
 					goto out;
 				}
-				ret = copy_from_user (buffer_r, kaddr, bytes);
+				ret = copy_from_user (kaddr, buffer_r, bytes);
 			}
 
 			if (ret) {
