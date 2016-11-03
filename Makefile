@@ -1,21 +1,14 @@
-ARCH=$(shell uname -m)
+ARCH_ARM := $(shell uname -m | grep -c arm)
 
-ifeq ($(ARCH), x86_64)
-	FOLDER := x86
-else ifeq ($(ARCH), arm)
-	FOLDER := arm
-else ifeq ($(ARCH), i686)
-	FOLDER := x86
-else ifeq ($(ARCH), arm)
+ifeq ($(ARCH_ARM),1)
 	FOLDER := arm
 else
-        $(error Bad architecture)
+	FOLDER := x86
 endif
 
+CFLAGS_r2kmod.o := -DDEBUG
 obj-m += r2kmod.o
-r2kmod-objs := r2k.o arch/$(FOLDER)/arch_functions.o
-#CFLAGS_r2kmod.o := -DDEBUG
-
+r2kmod-objs := r2k.o arch/$(FOLDER)/arch_functions.o arch/$(FOLDER)/dump_pagetables.o
 
 all:
 	$(MAKE) -C /lib/modules/$(shell uname -r)/build M=$(PWD) modules
