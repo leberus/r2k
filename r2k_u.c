@@ -86,8 +86,8 @@ int main(int argc, char **argv)
 	output = HEX;
 	ioctl_n = 0;
 
-	if (argc < 4)
-		print_help();
+/*	if (argc < 4)
+		print_help(); */
 
 	while ((opt = getopt (argc, argv, "a:i:b:w:p:o:")) != -1) {
 		switch (opt) {
@@ -244,6 +244,17 @@ int main(int argc, char **argv)
                 ret = ioctl (fd, ioctl_n, &data);
                 printf ("ret: %d\n", ret);
                 fprintf (stderr, "ioctl err: %s\n", strerror (errno));
+		break;
+	
+	case GET_KERNEL_MAP:
+	
+                data.len = 1;
+
+		ioctl_n = IOCTL_GET_KERNEL_MAP;
+		ret = ioctl (fd, ioctl_n, &data);
+		printf ("ret: %d\n", ret);
+		fprintf (stderr, "ioctl err: %s\n", strerror (errno));
+		break;
 
 	default:
 		printf ("ioctl not implemented\n");
