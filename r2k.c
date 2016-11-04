@@ -50,6 +50,9 @@ struct r2k_data {
 
 extern int addr_is_writeable (unsigned long addr);
 extern int addr_is_mapped (unsigned long addr);
+extern int dump_pagetables (void);
+extern int pg_dump (void);
+extern int pg_dump_remove_entry (void);
 
 static int io_open (struct inode *inode, struct file *file)
 {
@@ -417,20 +420,11 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		break;
 
 	case IOCTL_GET_KERNEL_MAP:
-	
 		pr_info ("%s: IOCTL_GET_KERNEL_MAP\n", r2_devname);
 
-		/*
-			Areas
-	
-			User Space
-			Kernel Mapping
-			vmalloc()
-			vmalloc() End
-			Persistent kmap() 
-			Fixmap Area
-		*/
-			
+		ret = pg_dump ();
+		return ret;
+
 		break;
 
 	default:
@@ -532,6 +526,7 @@ static void __exit r2k_exit (void)
 	class_destroy (r2k_class);
 	cdev_del (r2k_dev);
 	unregister_chrdev_region (devno, 1);
+	pg_dump_remove_entry ();
 	pr_info ("%s: unloading driver, /dev/%s deleted\n", r2_devname,
 								r2_devname);
 }
