@@ -50,9 +50,11 @@ struct r2k_data {
 
 extern int addr_is_writeable (unsigned long addr);
 extern int addr_is_mapped (unsigned long addr);
+#if defined (CONFIG_ARM) || defined (CONFIG_ARM64)
 extern int dump_pagetables (void);
 extern int pg_dump (void);
 extern int pg_dump_remove_entry (void);
+#endif
 
 static int io_open (struct inode *inode, struct file *file)
 {
@@ -420,10 +422,15 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		break;
 
 	case IOCTL_GET_KERNEL_MAP:
-		pr_info ("%s: IOCTL_GET_KERNEL_MAP\n", r2_devname);
 
+		pr_info ("%s: IOCTL_GET_KERNEL_MAP\n", r2_devname);
+#if defined (CONFIG_X86_32) || defined (CONFIG_X86_64)
+		pr_info ("%s: IOCTL not supported on this arch\n", r2_devname);
+		return -1;
+#else
 		ret = pg_dump ();
 		return ret;
+#endif
 
 		break;
 
@@ -526,7 +533,9 @@ static void __exit r2k_exit (void)
 	class_destroy (r2k_class);
 	cdev_del (r2k_dev);
 	unregister_chrdev_region (devno, 1);
+#if defined (CONFIG_ARM) || defined (CONFIG_ARM64)
 	pg_dump_remove_entry ();
+#endif
 	pr_info ("%s: unloading driver, /dev/%s deleted\n", r2_devname,
 								r2_devname);
 }
