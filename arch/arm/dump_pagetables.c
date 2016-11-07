@@ -6,6 +6,7 @@
 #include <asm/pgtable.h>
 #include <linux/proc_fs.h>
 #include "arm_definitions.h"
+#include "dump_pagetables.h"
 
 
 /*	
@@ -13,184 +14,6 @@
 	Here has just been added additional code to supply physical addresses 
 */
 	
-struct addr_marker {
-        unsigned long start_address;
-        const char *name;
-};
-
-static struct addr_marker address_markers[] = {
-        { MODULES_VADDR,        "Modules" },
-        { PAGE_OFFSET,          "Kernel Mapping" },
-        { 0,                    "vmalloc() Area" },
-        { VMALLOC_END,          "vmalloc() End" },
-        { FIXADDR_START,        "Fixmap Area" },
-        { CONFIG_VECTORS_BASE,  "Vectors" },
-        { CONFIG_VECTORS_BASE + PAGE_SIZE * 2, "Vectors End" },
-        { -1,                   NULL },
-};
-
-struct pg_state {
-        struct seq_file *seq;
-        const struct addr_marker *marker;
-        unsigned long start_address;
-        unsigned level;
-        u64 current_prot;
-};
-
-struct prot_bits {
-        u64             mask;
-        u64             val;
-        const char      *set;
-        const char      *clear;
-};
-
-static const struct prot_bits pte_bits[] = {
-        {
-                .mask   = L_PTE_USER,
-                .val    = L_PTE_USER,
-                .set    = "USR",
-                .clear  = "   ",
-        }, {
-                .mask   = L_PTE_RDONLY,
-                .val    = L_PTE_RDONLY,
-                .set    = "ro",
-                .clear  = "RW",
-        }, {
-                .mask   = L_PTE_XN,
-                .val    = L_PTE_XN,
-                .set    = "NX",
-                .clear  = "x ",
-        }, {
-                .mask   = L_PTE_SHARED,
-                .val    = L_PTE_SHARED,
-                .set    = "SHD",
-                .clear  = "   ",
-        }, {
-                .mask   = L_PTE_MT_MASK,
-                .val    = L_PTE_MT_UNCACHED,
-                .set    = "SO/UNCACHED",
-        }, {
-                .mask   = L_PTE_MT_MASK,
-                .val    = L_PTE_MT_BUFFERABLE,
-                .set    = "MEM/BUFFERABLE/WC",
-        }, {
-                .mask   = L_PTE_MT_MASK,
-                .val    = L_PTE_MT_WRITETHROUGH,
-                .set    = "MEM/CACHED/WT",
-        }, {
-                .mask   = L_PTE_MT_MASK,
-                .val    = L_PTE_MT_WRITEBACK,
-                .set    = "MEM/CACHED/WBRA",
-#ifndef CONFIG_ARM_LPAE
-        }, {
-                .mask   = L_PTE_MT_MASK,
-                .val    = L_PTE_MT_MINICACHE,
-                .set    = "MEM/MINICACHE",
-#endif
-        }, {
-                .mask   = L_PTE_MT_MASK,
-                .val    = L_PTE_MT_WRITEALLOC,
-                .set    = "MEM/CACHED/WBWA",
-        }, {
-                .mask   = L_PTE_MT_MASK,
-                .val    = L_PTE_MT_DEV_SHARED,
-                .set    = "DEV/SHARED",
-#ifndef CONFIG_ARM_LPAE
-        }, {
-                .mask   = L_PTE_MT_MASK,
-                .val    = L_PTE_MT_DEV_NONSHARED,
-                .set    = "DEV/NONSHARED",
-#endif
-        }, {
-                .mask   = L_PTE_MT_MASK,
-                .val    = L_PTE_MT_DEV_WC,
-                .set    = "DEV/WC",
-        }, {
-                .mask   = L_PTE_MT_MASK,
-                .val    = L_PTE_MT_DEV_CACHED,
-                .set    = "DEV/CACHED",
-        },
-};
-
-static const struct prot_bits section_bits[] = {
-#ifdef CONFIG_ARM_LPAE
-        {
-                .mask   = PMD_SECT_USER,
-                .val    = PMD_SECT_USER,
-                .set    = "USR",
-        }, {
-                .mask   = L_PMD_SECT_RDONLY,
-                .val    = L_PMD_SECT_RDONLY,
-                .set    = "ro",
-                .clear  = "RW",
-#elif __LINUX_ARM_ARCH__ >= 6
-        {
-                .mask   = PMD_SECT_APX | PMD_SECT_AP_READ | PMD_SECT_AP_WRITE,
-                .val    = PMD_SECT_APX | PMD_SECT_AP_WRITE,
-                .set    = "    ro",
-        }, {
-                .mask   = PMD_SECT_APX | PMD_SECT_AP_READ | PMD_SECT_AP_WRITE,
-                .val    = PMD_SECT_AP_WRITE,
-                .set    = "    RW",
-        }, {
-                .mask   = PMD_SECT_APX | PMD_SECT_AP_READ | PMD_SECT_AP_WRITE,
-                .val    = PMD_SECT_AP_READ,
-                .set    = "USR ro",
-        }, {
-		                .mask   = PMD_SECT_APX | PMD_SECT_AP_READ | PMD_SECT_AP_WRITE,
-                .val    = PMD_SECT_AP_READ | PMD_SECT_AP_WRITE,
-                .set    = "USR RW",
-#else /* ARMv4/ARMv5  */
-        /* These are approximate */
-        {
-                .mask   = PMD_SECT_AP_READ | PMD_SECT_AP_WRITE,
-                .val    = 0,
-                .set    = "    ro",
-        }, {
-                .mask   = PMD_SECT_AP_READ | PMD_SECT_AP_WRITE,
-                .val    = PMD_SECT_AP_WRITE,
-                .set    = "    RW",
-        }, {
-                .mask   = PMD_SECT_AP_READ | PMD_SECT_AP_WRITE,
-                .val    = PMD_SECT_AP_READ,
-                .set    = "USR ro",
-        }, {
-                .mask   = PMD_SECT_AP_READ | PMD_SECT_AP_WRITE,
-                .val    = PMD_SECT_AP_READ | PMD_SECT_AP_WRITE,
-                .set    = "USR RW",
-#endif
-        }, {
-                .mask   = PMD_SECT_XN,
-                .val    = PMD_SECT_XN,
-                .set    = "NX",
-                .clear  = "x ",
-        }, {
-                .mask   = PMD_SECT_S,
-                .val    = PMD_SECT_S,
-                .set    = "SHD",
-                .clear  = "   ",
-        },
-};
-
-struct pg_level {
-        const struct prot_bits *bits;
-        size_t num;
-        u64 mask;
-};
-
-static struct pg_level pg_level[] = {
-        {
-        }, { /* pgd */
-        }, { /* pud */
-        }, { /* pmd */
-                .bits   = section_bits,
-                .num    = ARRAY_SIZE(section_bits),
-        }, { /* pte */
-                .bits   = pte_bits,
-                .num    = ARRAY_SIZE(pte_bits),
-        },
-};
-
 static void dump_prot(struct pg_state *st, const struct prot_bits *bits, size_t num)
 {
         unsigned i;
@@ -237,7 +60,7 @@ static void note_page(struct pg_state *st, unsigned long addr, unsigned level, u
                                 dump_prot(st, pg_level[st->level].bits, pg_level[st->level].num);
 
 			nr_pages = (addr - st->start_address) / PAGE_SIZE;
-			if (st->marker->start_address == PAGE_OFFSET||
+			if (st->marker->start_address == PAGE_OFFSET ||
 				st->marker->start_address == VMALLOC_START ||
 				st->marker->start_address == MODULES_VADDR) {
 				int i;
@@ -245,11 +68,12 @@ static void note_page(struct pg_state *st, unsigned long addr, unsigned level, u
 
 				seq_printf (st->seq, "\n\t");
 				if (st->marker->start_address == PAGE_OFFSET) {
-					seq_printf(st->seq, "  phys: {  0x%08lx-0x%8lx  }",
+					seq_printf(st->seq, "  phys: {  0x%08llx-0x%8llx  }",
 								__pa (st->start_address),
 								__pa (addr));
-				} else if (st->marker->start_address == VMALLOC_START ||
-					st->marker->start_address == MODULES_VADDR)  {
+				} else if ((st->marker->start_address == VMALLOC_START ||
+					st->marker->start_address == MODULES_VADDR) &&
+			      		level == 4)	{
 					seq_printf (st->seq, "  phys: {\n\t\t");
 					for (i = 0, aux_addr = st->start_address; 
 								i < nr_pages ; 
@@ -264,7 +88,7 @@ static void note_page(struct pg_state *st, unsigned long addr, unsigned level, u
 							seq_printf (st->seq, " 0x%08lx", (pfn << PAGE_SHIFT));
 					}
 					seq_printf (st->seq, "\n\t\t}");
-				}
+				} 
 			}
 			
                         seq_printf(st->seq, "\n\n"); 
@@ -278,6 +102,13 @@ static void note_page(struct pg_state *st, unsigned long addr, unsigned level, u
                 st->current_prot = prot;
                 st->level = level;
         }
+
+#ifdef CONFIG_ARM64
+	if (addr >= st->marker[1].start_address) {
+		st->marker++;
+		seq_printf (st->seq, "---[%s]---\n", st->marker->name);
+	}
+#endif
 }
 
 static void walk_pte(struct pg_state *st, pmd_t *pmd, unsigned long start)
@@ -300,13 +131,19 @@ static void walk_pmd(struct pg_state *st, pud_t *pud, unsigned long start)
 
         for (i = 0; i < PTRS_PER_PMD; i++, pmd++) {
                 addr = start + i * PMD_SIZE;
+#ifdef CONFIG_ARM64
+		if (pmd_none(*pmd) || pmd_sect (*pmd))
+#else
 		if (pmd_none(*pmd) || pmd_large(*pmd) || !pmd_present(*pmd))
+#endif
                         note_page(st, addr, 3, pmd_val(*pmd));
                 else
                         walk_pte(st, pmd, addr);
 
+#ifdef CONFIG_ARM
                 if (SECTION_SIZE < PMD_SIZE && pmd_large(pmd[1]))
                         note_page(st, addr + SECTION_SIZE, 3, pmd_val(pmd[1]));
+#endif
         }
 }
 
@@ -318,11 +155,17 @@ static void walk_pud(struct pg_state *st, pgd_t *pgd, unsigned long start)
 
         for (i = 0; i < PTRS_PER_PUD; i++, pud++) {
                 addr = start + i * PUD_SIZE;
-                if (!pud_none(*pud)) {
-                        walk_pmd(st, pud, addr);
-                } else {
-                        note_page(st, addr, 2, pud_val(*pud));
-                }
+#ifdef CONFIG_ARM64
+		if (pud_none (*pud) || pud_sect (*pud)) 
+			note_page (st, addr, 2, pud_val (*pud));
+		else
+		       	walk_pmd (st, pud, addr);	
+#else
+                if (!pud_none(*pud))
+			walk_pmd (st, pud, addr);
+		else
+			note_page (st, addr, 2, pud_val (*pud);
+#endif
         }
 }
 
@@ -340,7 +183,11 @@ static void walk_pgd(struct seq_file *m)
 	pgd = get_global_pgd ();
 
         for (i = 0; i < PTRS_PER_PGD; i++, pgd++) {
-                addr = i * PGDIR_SIZE;
+#ifdef CONFIG_ARM64
+                addr = VA_START + i * PGDIR_SIZE;
+#else
+		addr = i * PGDIR_SIZE;
+#endif
                 if (!pgd_none(*pgd)) {
                         walk_pud(&st, pgd, addr);
                 } else {
@@ -378,7 +225,9 @@ int pg_dump(void)
                         for (j = 0; j < pg_level[i].num; j++)
                                 pg_level[i].mask |= pg_level[i].bits[j].mask;
 
+#ifdef CONFIG_ARM
         address_markers[2].start_address = VMALLOC_START;
+#endif
 	if (proc_create ("r2k_kernel_pagetables", 
 				0, NULL, &pg_dump_fops) == NULL) {
 		pr_info ("NULL\n");
