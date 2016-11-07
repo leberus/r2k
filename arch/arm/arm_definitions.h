@@ -1,16 +1,27 @@
 #ifndef __ARM_DEFINITIONS_H
 #define __ARM_DEFINITIONS_H
 
-static pgd_t *get_global_pgd (void)
-{
-	unsigned long ttb_reg;
+#ifdef CONFIG_ARM64
+#include "arm64_definitions.h"
+#elif defined CONFIG_ARM_LPAE
+#include "arm_lpae_definitions.h"
+#else
+#include "arm32_definitions.h"
+#endif
 
-	asm volatile (
-	"       mrc     p15, 0, %0, c2, c0, 1"
-	: "=r" (ttb_reg));
-	ttb_reg &= ~0x3fff;
+#ifndef pmd_large
+# define pmd_large(x)   (pmd_val(x) & 2)
+#endif
 
-	return __va (ttb_reg);
-}
+#if !defined (pmd_write) && !defined (CONFIG_DEBUG_RODATA)
+#  define pmd_write(x)          (1)
+#endif
+
+#define PAGE_IS_RW(x)           pte_write(x)
+#define PAGE_IS_PRESENT(x)      pte_present(x)
+
+#define WRITE_TYPE              0x1
+#define PRESENT_TYPE            0x2
+
 #endif	
 

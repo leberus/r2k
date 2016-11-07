@@ -5,7 +5,6 @@
 #include <asm/fixmap.h>
 #include <asm/pgtable.h>
 #include <linux/proc_fs.h>
-
 #include "arm_definitions.h"
 
 
@@ -14,7 +13,6 @@
 	Here has just been added additional code to supply physical addresses 
 */
 	
-
 struct addr_marker {
         unsigned long start_address;
         const char *name;
