@@ -68,7 +68,7 @@ static void note_page(struct pg_state *st, unsigned long addr, unsigned level, u
 
 				seq_printf (st->seq, "\n\t");
 				if (st->marker->start_address == PAGE_OFFSET) {
-					seq_printf(st->seq, "  phys: {  0x%08llx-0x%8llx  }",
+					seq_printf(st->seq, "  phys: {  0x%08llx-0x%08llx  }",
 								__pa (st->start_address),
 								__pa (addr));
 				} else if ((st->marker->start_address == VMALLOC_START ||
@@ -164,7 +164,7 @@ static void walk_pud(struct pg_state *st, pgd_t *pgd, unsigned long start)
                 if (!pud_none(*pud))
 			walk_pmd (st, pud, addr);
 		else
-			note_page (st, addr, 2, pud_val (*pud);
+			note_page (st, addr, 2, pud_val (*pud));
 #endif
         }
 }
