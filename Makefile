@@ -1,4 +1,4 @@
-ARCH_ARM := $(shell uname -m | grep -c arm)
+ARCH_ARM := $(shell uname -m | grep -c "[arm|aarch]")
 
 ifeq ($(ARCH_ARM),1)
 	FOLDER := arm
