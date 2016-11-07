@@ -13,14 +13,6 @@
 #include "arm_definitions.h"
 #endif
 
-#ifndef pmd_sect
-# define pmd_sect(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_SECT)
-#endif
-
-#ifndef pmd_table
-# define pmd_table(x)		((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
-#endif
-
 #if !defined (pmd_write) && !defined (CONFIG_DEBUG_RODATA)
 #  define pmd_write(x)		(1)
 #endif
@@ -72,14 +64,12 @@ static int check_addr (unsigned long addr, int type)
 #endif
 	pmd = pmd_offset (pud, addr);
 	if (!pmd_none (*pmd)) {
-		if (pmd_sect (*pmd)) {
+		if (pmd_large (*pmd)) {
 			pr_info ("%s: pmd_sect\n", r2_devname);
 			return type == WRITE_TYPE
 				? pmd_write (*pmd)
-				: pmd_present (*pmd);  
-		}
-
-		if (pmd_table (*pmd)) {
+				: pmd_present (*pmd);
+		} else {
 			pr_info ("%s: pmd_table\n", r2_devname);
 			pte_t *pte = pte_offset_kernel (pmd, addr);
 			return type == WRITE_TYPE
