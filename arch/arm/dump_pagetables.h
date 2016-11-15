@@ -7,4 +7,5 @@
 #include  "dump_pagetables32.h"
 #endif
 
+#include "../../r2k.h"
 #endif

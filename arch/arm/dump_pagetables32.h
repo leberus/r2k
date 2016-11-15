@@ -2,8 +2,6 @@
 #define __DUMP_PAGETABLES32_H
 
 #include "arm_definitions.h"
-#include "dump_pagetables.h"
-
 
 /*	
 	Most of the code it has been taken from arch/-/mm/dump.c
@@ -27,7 +25,8 @@ static struct addr_marker address_markers[] = {
 };
 
 struct pg_state {
-        struct seq_file *seq;
+	struct r2k_map *k_map;
+	int n_entries;
         const struct addr_marker *marker;
         unsigned long start_address;
         unsigned level;

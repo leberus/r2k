@@ -13,47 +13,11 @@
 #include <linux/uaccess.h>
 #include <linux/version.h>
 #include <linux/utsname.h>
+#include "r2k.h"
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,6,0)
 #define get_user_pages		get_user_pages_remote
 #define page_cache_release	put_page
-#endif
-
-#define ADDR_OFFSET(x)		(x & (~PAGE_MASK))
-
-#define R2_TYPE 0x69
-
-#define IOCTL_READ_KERNEL_MEMORY	0x1
-#define IOCTL_WRITE_KERNEL_MEMORY	0x2
-#define IOCTL_READ_PROCESS_ADDR		0x3
-#define IOCTL_WRITE_PROCESS_ADDR	0x4
-#define IOCTL_READ_PHYSICAL_ADDR	0x5
-#define IOCTL_WRITE_PHYSICAL_ADDR	0x6
-#define IOCTL_GET_PROC_MAPS		0x7
-#define IOCTL_GET_KERNEL_MAP		0x8
-
-#define  R2_CLASS_NAME	"r2k"
-
-static struct device *r2k_dev_ph;
-static struct class *r2k_class;
-static struct cdev *r2k_dev;
-static dev_t devno;
-
-static char *r2_devname = "r2k";
-
-struct r2k_data {
-	int pid;
-	unsigned long addr;
-	unsigned long len;
-	void __user *buff;
-};
-
-extern int addr_is_writeable (unsigned long addr);
-extern int addr_is_mapped (unsigned long addr);
-#if defined (CONFIG_ARM) || defined (CONFIG_ARM64)
-extern int dump_pagetables (void);
-extern int pg_dump (void);
-extern int pg_dump_remove_entry (void);
 #endif
 
 static int io_open (struct inode *inode, struct file *file)
@@ -130,6 +94,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 					unsigned long data_addr)
 {
 	struct r2k_data *data;
+	struct r2k_map k_map;
 	struct task_struct *task;
 	struct vm_area_struct *vma;
 	unsigned long next_aligned_addr;
@@ -167,8 +132,6 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		pr_info ("%s: IOCTL_READ_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
 								data->addr);
 
-		pr_info ("%s: phys 0x%x\n", r2_devname, __pa(data->addr));
-	
 		if (!check_kernel_addr (data->addr)) {
 			pr_info ("%s: 0x%lx invalid addr\n", r2_devname, 
 								data->addr);
@@ -426,12 +389,12 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		pr_info ("%s: IOCTL_GET_KERNEL_MAP\n", r2_devname);
 #if defined (CONFIG_X86_32) || defined (CONFIG_X86_64)
 		pr_info ("%s: IOCTL not supported on this arch\n", r2_devname);
-		return -1;
-#else
-		ret = pg_dump ();
-		return ret;
+		ret = -1;
+		goto out;
+#else 
+		memset (&k_map, 0, sizeof (k_map));
+		ret = pg_dump (&k_map);
 #endif
-
 		break;
 
 	default:
@@ -467,7 +430,6 @@ static int __init r2k_init (void)
 	int ret;
 
 	pr_info ("%s: loading driver\n", r2_devname);
-	pr_info ("%s: alloc_chrdev_region: %p\n", r2_devname, alloc_chrdev_region);
 
 	ret = alloc_chrdev_region (&devno, 0, 1, r2_devname);
 	if (ret < 0) {
@@ -533,9 +495,6 @@ static void __exit r2k_exit (void)
 	class_destroy (r2k_class);
 	cdev_del (r2k_dev);
 	unregister_chrdev_region (devno, 1);
-#if defined (CONFIG_ARM) || defined (CONFIG_ARM64)
-	pg_dump_remove_entry ();
-#endif
 	pr_info ("%s: unloading driver, /dev/%s deleted\n", r2_devname,
 								r2_devname);
 }
