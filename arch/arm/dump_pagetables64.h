@@ -57,6 +57,7 @@ static const struct addr_marker address_markers[] = {
  * dumps out a description of the range.
  */
 struct pg_state {
+	struct r2k_map *k_map;
 	struct seq_file *seq;
 	const struct addr_marker *marker;
 	unsigned long start_address;

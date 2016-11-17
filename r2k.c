@@ -166,7 +166,7 @@ static int get_r2k_data (struct r2k_data **data, unsigned long data_addr)
 	if (!data)
 		return -ENOMEM;
 
-	ret = copy_from_user (*data, (void __user*)data_addr, sizeof (*data));
+	ret = copy_from_user (*data, (void __user*)data_addr, sizeof (struct r2k_data));
 	if (ret) {
 		pr_info ("%s: couldn not copy struct r2k_data\n", r2_devname);
 		kfree (*data);
@@ -202,6 +202,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	data = NULL;
 	if (_IOC_NR (cmd) != IOCTL_GET_KERNEL_MAP) {
 		ret = get_r2k_data (&data, data_addr);
+		pr_info ("get_r2k_data\n");
 		if (ret)
 			return ret;
 		len = data->len;
