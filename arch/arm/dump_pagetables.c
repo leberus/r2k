@@ -16,26 +16,18 @@ static unsigned long start_vmalloc_allocated = 0;
 static unsigned long end_vmalloc_allocated = 0;
 
 static int entry = 0;
-static int ro = 1;
-	
-/*
-static void dump_prot(struct pg_state *st, const struct prot_bits *bits, size_t num)
+static int ro;
+
+static int addr_from_kernel(unsigned long addr)
 {
-        unsigned i;
-
-        for (i = 0; i < num; i++, bits++) {
-                const char *s;
-
-                if ((st->current_prot & bits->mask) == bits->val)
-                        s = bits->set;
-                else
-                        s = bits->clear;
-
-                if (s) 
-                        seq_printf(st->seq, " %s", s); 
-        }
+	return addr == PAGE_OFFSET;
 }
-*/
+
+static int addr_from_vmalloc(unsigned long addr)
+{
+	return (addr == VMALLOC_START || addr == MODULES_VADDR);
+}
+	
 static void note_page(struct pg_state *st, unsigned long addr, unsigned level, u64 val)
 {
         u64 prot = val & pg_level[level].mask;
@@ -46,55 +38,50 @@ static void note_page(struct pg_state *st, unsigned long addr, unsigned level, u
 	}
 	
         if (!st->level && !ro) {
-		struct kernel_map *info = &st->k_map->map_info[entry];
                 st->level = level;
                 st->current_prot = prot;
-		strncpy (info->name, st->marker->name, MAX_MAP_NAME - 1);
         } else if (prot != st->current_prot || level != st->level ||
                    addr >= st->marker[1].start_address) {
                 if (st->current_prot) {
-			if (ro) {
-				st->k_map->n_entries++;
+			if(ro) {
+				if (addr_from_kernel(st->marker->start_address) ||
+				addr_from_vmalloc(st->marker->start_address)) {
+					st->k_map->kernel_maps_info.n_entries++;
+				}
+				
 				goto skip_process;
 			}
+
 			int nr_pages = (addr - st->start_address) / PAGE_SIZE;
-			struct kernel_map *info = &st->k_map->map_info[entry];
+			struct kernel_map_info *info = &st->k_map->map_info[entry];
+
 			info->start_addr = st->start_address;
 			info->end_addr = addr;
-
-                        /*if (pg_level[st->level].bits) 
-                                dump_prot(st, pg_level[st->level].bits, pg_level[st->level].num);*/
 
 			if (nr_pages >= MAX_PHYS_ADDR)
 				nr_pages = MAX_PHYS_ADDR - 1;
 			info->n_pages = nr_pages;
-			if (st->marker->start_address == PAGE_OFFSET ||
-				st->marker->start_address == VMALLOC_START ||
-				st->marker->start_address == MODULES_VADDR) {
+
+			if(st->marker->start_address == PAGE_OFFSET) {
+				info->phys_addr[0] = __pa (st->start_address);
+				info->phys_addr[1] = __pa (addr);
+				entry++;
+			} else if ((st->marker->start_address == VMALLOC_START ||
+				st->marker->start_address == MODULES_VADDR) &&
+				level == 4) {
 				int i;
 				unsigned long aux_addr;
-
-				if (st->marker->start_address == PAGE_OFFSET) {
-					info->phys_addr[0] = __pa (st->start_address);
-					info->phys_addr[1] = __pa (addr);
-				} else if ((st->marker->start_address == VMALLOC_START ||
-					st->marker->start_address == MODULES_VADDR) &&
-			      		level == 4)	{
-					for (i = 0, aux_addr = st->start_address;
-								i < nr_pages ; 
-							i++, aux_addr += PAGE_SIZE) {
-						unsigned long pfn = vmalloc_to_pfn ((void *) aux_addr);
-						
-						if (!pfn_valid (pfn))
-							info->phys_addr[i] = 0;
-						else
-							info->phys_addr[i] = (pfn << PAGE_SHIFT);
-					}
-				} 
+				for (i = 0, aux_addr = st->start_address; i < nr_pages; i++, aux_addr += PAGE_SIZE) {
+					unsigned long pfn = vmalloc_to_pfn ((void *) aux_addr);
+					if (!pfn_valid (pfn))
+						info->phys_addr[i] = 0;
+					else
+						info->phys_addr[i] = (pfn << PAGE_SHIFT);
+				}
 				entry++;
-			}
-                }
-
+			} 
+		}
+						
 skip_process:
                 if (addr >= st->marker[1].start_address) {
                         st->marker++;
@@ -204,6 +191,8 @@ static void walk_pgd(struct r2k_map *k_map)
 int pg_dump(struct r2k_map *k_map)
 {
         unsigned i, j;
+	int size;
+	unsigned long addr;
 
         for (i = 0; i < ARRAY_SIZE(pg_level); i++)
                	if (pg_level[i].bits)
@@ -213,11 +202,22 @@ int pg_dump(struct r2k_map *k_map)
 #ifdef CONFIG_ARM
         address_markers[2].start_address = VMALLOC_START;
 #endif
+	ro = 1;
 	walk_pgd (k_map);
-	k_map->map_info = vmalloc (k_map->n_entries * sizeof (struct kernel_map));
+
+	size = k_map->kernel_maps_info.n_entries * sizeof (struct kernel_map_info);
+	k_map->map_info = vmalloc (size);
+	size = PAGE_ALIGN (size);
+	k_map->kernel_maps_info.size = size;
 
 	start_vmalloc_allocated = (unsigned long)k_map->map_info;
-	end_vmalloc_allocated = start_vmalloc_allocated + PAGE_ALIGN ((k_map->n_entries * sizeof (struct kernel_map)) + PAGE_SIZE);
+	end_vmalloc_allocated = start_vmalloc_allocated + size + PAGE_SIZE;
+
+	addr = start_vmalloc_allocated;
+	for (addr = start_vmalloc_allocated ; 
+		addr < end_vmalloc_allocated - PAGE_SIZE; addr += PAGE_SIZE) 
+		SetPageReserved (vmalloc_to_page ((void*)addr));
+	
 
 	ro = 0;
 	walk_pgd (k_map);

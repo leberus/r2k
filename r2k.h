@@ -29,19 +29,22 @@ struct r2k_data {
 };
 
 #define MAX_PHYS_ADDR	128
-#define MAX_MAP_NAME	80
 
-struct kernel_map {
-	char name[MAX_MAP_NAME];
-        u64 start_addr;
-        u64 end_addr;
-        u64 phys_addr[MAX_PHYS_ADDR];
-        int n_pages;
+struct kernel_map_info {
+	unsigned long start_addr;
+	unsigned long end_addr;
+	unsigned long phys_addr[MAX_PHYS_ADDR];
+	int n_pages;
+};
+
+struct kernel_maps {
+	int n_entries;
+	int size;
 };
 
 struct r2k_map {
-        int n_entries;
-        struct kernel_map *map_info;
+	struct kernel_maps kernel_maps_info;
+	struct kernel_map_info *map_info;
 };
 
 extern int addr_is_writeable (unsigned long addr);

@@ -13,12 +13,25 @@
 #include <linux/uaccess.h>
 #include <linux/version.h>
 #include <linux/utsname.h>
+#include <linux/vmalloc.h>
 #include "r2k.h"
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,6,0)
 #define get_user_pages		get_user_pages_remote
 #define page_cache_release	put_page
 #endif
+
+static struct r2k_map g_r2k_map = {
+	{0, 0},
+	NULL,
+};
+
+
+struct num {
+	int a;
+	int b;
+	int c[12];
+};
 
 static int io_open (struct inode *inode, struct file *file)
 {
@@ -30,6 +43,60 @@ static int io_close (struct inode *inode, struct file *file)
 	return 0;
 }
 
+static void clean_mmap (void)
+{
+	unsigned long start_addr;
+	unsigned long end_addr;
+	unsigned long addr;
+	int n_pages;
+
+	if (g_r2k_map.map_info) {
+		n_pages = g_r2k_map.kernel_maps_info.size / PAGE_SIZE;
+
+		start_addr = (unsigned long)g_r2k_map.map_info;
+		end_addr = start_addr + (n_pages * PAGE_SIZE);
+		for(addr = start_addr; addr < end_addr; addr += PAGE_SIZE)
+			ClearPageReserved (vmalloc_to_page ((void*)addr));
+
+		vfree (g_r2k_map.map_info);
+		g_r2k_map.map_info = NULL;
+	}
+}
+
+static int mmap_struct (struct file *filp, struct vm_area_struct *vma)
+{	
+	int n_pages; 
+	unsigned long start_addr;
+	unsigned long end_addr;
+	unsigned long u_addr;
+	unsigned long k_addr;
+	unsigned long length;
+
+	n_pages = g_r2k_map.kernel_maps_info.size / PAGE_SIZE;
+
+	start_addr = (unsigned long)g_r2k_map.map_info;
+	end_addr = start_addr + (n_pages * PAGE_SIZE);
+
+	length = vma->vm_end - vma->vm_start;
+
+	if (length > g_r2k_map.kernel_maps_info.size) {
+		pr_info ("%s: given size if above limit\n", r2_devname);
+		return -1;
+	}
+
+	for (k_addr = start_addr, u_addr = vma->vm_start; 
+		k_addr < end_addr; k_addr += PAGE_SIZE) {
+		unsigned long pfn = vmalloc_to_pfn ((void *)k_addr);
+		int ret = remap_pfn_range (vma, u_addr, pfn, PAGE_SIZE, PAGE_SHARED);
+		if (ret < 0) {
+			pr_info ("%s: remap_pfn_range failed\n", r2_devname);
+		}
+		u_addr += PAGE_SIZE;
+	}
+	
+	return 0;
+}
+	
 static int is_from_module_or_vmalloc (unsigned long addr)
 {
 	if (is_vmalloc_addr ((void *)addr) ||
@@ -90,6 +157,31 @@ static inline void unmap_addr (void *kaddr, unsigned long addr)
 	kunmap_atomic (kaddr - ADDR_OFFSET (addr));
 }
 
+static int get_r2k_data (struct r2k_data **data, unsigned long data_addr)
+{
+	int ret;
+	int len;
+
+	*data = kmalloc (sizeof (*data), GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+
+	ret = copy_from_user (*data, (void __user*)data_addr, sizeof (*data));
+	if (ret) {
+		pr_info ("%s: couldn not copy struct r2k_data\n", r2_devname);
+		kfree (*data);
+		return -EFAULT;
+	}
+
+	len = (*data)->len;
+	if (len < 1) {
+		kfree (*data);
+		return -EINVAL;
+	}
+	
+	return 0;
+}
+
 static long io_ioctl (struct file *file, unsigned int cmd, 
 					unsigned long data_addr)
 {
@@ -107,22 +199,12 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	if (_IOC_TYPE (cmd) != R2_TYPE)
 		return -EINVAL;
 
-	data = kmalloc (sizeof (*data), GFP_KERNEL);
-	if (!data)
-		return -ENOMEM;
-
-	memset (data, 0, sizeof (*data));
-	ret = copy_from_user (data, (void __user*)data_addr, sizeof (*data));
-	if (ret) {
-		pr_info ("%s: couldn not copy struct r2k_data\n", r2_devname);
-		ret = -EFAULT;
-		goto out;
-	}
-
-	len = data->len;
-	if (len == 0) {
-		ret = -EINVAL;
-		goto out;
+	data = NULL;
+	if (_IOC_NR (cmd) != IOCTL_GET_KERNEL_MAP) {
+		ret = get_r2k_data (&data, data_addr);
+		if (ret)
+			return ret;
+		len = data->len;
 	}
 
 	switch (_IOC_NR (cmd)) {
@@ -392,8 +474,23 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		ret = -1;
 		goto out;
 #else 
+		if (g_r2k_map.map_info) 
+			clean_mmap();
+
 		memset (&k_map, 0, sizeof (k_map));
 		ret = pg_dump (&k_map);
+
+		g_r2k_map.kernel_maps_info.size = k_map.kernel_maps_info.size;
+		g_r2k_map.kernel_maps_info.n_entries = k_map.kernel_maps_info.n_entries;
+		g_r2k_map.map_info = k_map.map_info;
+
+		ret = copy_to_user ((void __user *)data_addr, &k_map.kernel_maps_info, sizeof (struct kernel_maps));
+		if (ret) {
+			pr_info ("%s: failed while copying\n", r2_devname);
+			ret = -EFAULT;
+			clean_mmap ();
+			goto out;
+		}
 #endif
 		break;
 
@@ -404,7 +501,8 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	}
 
 out:
-	kfree (data);
+	if (data)
+		kfree (data);
 	return ret;
 }
 
@@ -413,6 +511,7 @@ static struct file_operations fops = {
         .open = io_open,
         .release = io_close,
         .unlocked_ioctl = io_ioctl,
+	.mmap = mmap_struct,
 };
 
 static char *r2k_devnode (struct device *dev_ph, umode_t *mode)
@@ -489,6 +588,7 @@ out:
 
 static void __exit r2k_exit (void)
 {
+	clean_mmap ();
 	device_destroy (r2k_class, devno);
 	class_unregister (r2k_class);
 
