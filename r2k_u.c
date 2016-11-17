@@ -10,6 +10,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
+#include <sys/mman.h>
 
 #define CHAR_FMT "%c "
 #define HEX_FMT "0x%02x "
@@ -24,13 +25,27 @@ struct r2k_data {
         unsigned char *buff;
 };
 
+#define MAX_PHYS_ADDR   128
+
+struct kernel_map_info {
+        unsigned long start_addr;
+        unsigned long end_addr;
+        unsigned long phys_addr[MAX_PHYS_ADDR];
+        int n_pages;
+};
+
+struct kernel_maps {
+        int n_entries;
+        int size;
+};
+
 #define R2_TYPE 0x69
 
 #define IOCTL_READ_KERNEL_MEMORY	_IOR (R2_TYPE, 0x1, sizeof (struct r2k_data))
 #define IOCTL_WRITE_KERNEL_MEMORY	_IOR (R2_TYPE, 0x2, sizeof (struct r2k_data))
-#define IOCTL_READ_PROCESS_ADDR          _IOR (R2_TYPE, 0x3, sizeof (struct r2k_data))
-#define IOCTL_WRITE_PROCESS_ADDR         _IOR (R2_TYPE, 0x4, sizeof (struct r2k_data))
-#define IOCTL_READ_PHYSICAL_ADDR        _IOR (R2_TYPE, 0x5, sizeof (struct r2k_data))
+#define IOCTL_READ_PROCESS_ADDR         _IOR (R2_TYPE, 0x3, sizeof (struct r2k_data))
+#define IOCTL_WRITE_PROCESS_ADDR	_IOR (R2_TYPE, 0x4, sizeof (struct r2k_data))
+#define IOCTL_READ_PHYSICAL_ADDR	_IOR (R2_TYPE, 0x5, sizeof (struct r2k_data))
 #define IOCTL_WRITE_PHYSICAL_ADDR       _IOR (R2_TYPE, 0x6, sizeof (struct r2k_data))
 #define IOCTL_GET_PROC_MAPS             _IOR (R2_TYPE, 0x7, sizeof (struct r2k_data))
 #define IOCTL_GET_KERNEL_MAP            _IOR (R2_TYPE, 0x8, sizeof (struct r2k_data))
@@ -71,11 +86,14 @@ int main(int argc, char **argv)
 	int fd;
 	int ret;
 	int i;
+	int j;
 	int opt;
 	int n_bytes;
 	int n_ioctl;
 	unsigned int ioctl_n;
 	struct r2k_data data;
+	struct kernel_maps map_data;
+	struct kernel_map_info *info;
 	unsigned char c = 98;
 	char *p;
 	char *str;
@@ -248,12 +266,37 @@ int main(int argc, char **argv)
 	
 	case GET_KERNEL_MAP:
 	
-                data.len = 1;
-
 		ioctl_n = IOCTL_GET_KERNEL_MAP;
-		ret = ioctl (fd, ioctl_n, &data);
+		ret = ioctl (fd, ioctl_n, &map_data);
+
+		if (ret < 0) {
+			fprintf (stderr, "ioctl err: %s\n", strerror (errno));
+			break;
+		}
+
+		printf ("map_data.size: %d, map_data.n_entries: %d\n", map_data.size, map_data.n_entries);
+
+		info = mmap (0, map_data.size, PROT_READ, MAP_SHARED, fd, 0);
+		if (info == MAP_FAILED) {
+			fprintf (stderr, "mmap err: %s\n", strerror (errno));
+			break;
+		}
+
 		printf ("ret: %d\n", ret);
 		fprintf (stderr, "ioctl err: %s\n", strerror (errno));
+
+		int i, j;
+        	for (i = 0; i < map_data.n_entries ; i++) {
+                	struct kernel_map_info *in = &info[i];
+                	printf ("start_addr: 0x%lx\n", in->start_addr);
+                	printf ("end_addr: 0x%lx\n", in->end_addr);
+                	for(j = 0; j < in->n_pages; j++)
+                        	printf("\tphys_addr: 0x%lx\n", in->phys_addr[j]);
+		}		
+
+		if (munmap (info, map_data.size) == -1)
+			perror("munmap failed\n");
+
 		break;
 
 	default:
