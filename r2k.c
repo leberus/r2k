@@ -830,7 +830,6 @@ static int __init r2k_init (void)
 	}
 
 	pr_info ("%s: /dev/%s created\n", r2_devname, r2_devname);
-	pr_info ("%s: kernel_version: %s\n", r2_devname, utsname()->release);
 
 	return 0;
 

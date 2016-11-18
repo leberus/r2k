@@ -1,6 +1,8 @@
 #ifndef __X86_DEFINITIONS__H__
 #define __X86_DEFINITIONS__H__
 
+#include <linux/version.h>
+
 #if (defined(CONFIG_X86_32) || defined(CONFIG_X86_64))
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,0))
 #include <asm/special_insns.h>

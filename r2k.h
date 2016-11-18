@@ -2,7 +2,6 @@
 #define __R2K_H
 
 #include <linux/version.h>
-#include <linux/utsname.h>
 
 static char *r2_devname = "r2k";
 
