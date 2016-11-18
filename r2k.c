@@ -685,11 +685,10 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	case IOCTL_PROC_INFO:
 	{
 		unsigned long counter = 0;
-		struct r2k_proc_info *proc_inf = NULL;
 		struct task_struct *task = NULL;
 		struct mm_struct *mm = NULL;
 		struct vm_area_struct *vma = NULL;
-		
+
 		proc_inf = kmalloc (sizeof (*proc_inf), GFP_KERNEL);
 		if (!proc_inf) {
 			return -ENOMEM;
@@ -715,12 +714,13 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		task_lock(task);
 		strncpy (proc_inf->comm, task->comm, sizeof (task->comm));
 		task_unlock(task);
-		
+
 		counter = 0;
 		if (vma) {
 			for (; vma; vma = vma->vm_next) {
 				ret = write_vmareastruct (vma, mm, proc_inf, &counter);
 				if (ret) {
+					pr_info ("write_vmareastruct - error\n");
 					goto out;
 				}
 			}
