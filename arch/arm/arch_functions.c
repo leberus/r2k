@@ -6,14 +6,6 @@
 #include <linux/printk.h>
 #include "arm_definitions.h"
 
-//#ifdef CONFIG_ARM64
-//#include "arm64_definitions.h"
-//#elif defined CONFIG_ARM_LPAE
-//#include "arm_lpae_definitions.h"
-//#else
-//#include "arm32_definitions.h"
-//#endif
-
 static char *r2_devname = "r2k";	
 
 static pud_t *lookup_address (unsigned long addr)

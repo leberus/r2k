@@ -47,8 +47,7 @@ struct kernel_maps {
 #define IOCTL_WRITE_PROCESS_ADDR	_IOR (R2_TYPE, 0x4, sizeof (struct r2k_data))
 #define IOCTL_READ_PHYSICAL_ADDR	_IOR (R2_TYPE, 0x5, sizeof (struct r2k_data))
 #define IOCTL_WRITE_PHYSICAL_ADDR       _IOR (R2_TYPE, 0x6, sizeof (struct r2k_data))
-#define IOCTL_GET_PROC_MAPS             _IOR (R2_TYPE, 0x7, sizeof (struct r2k_data))
-#define IOCTL_GET_KERNEL_MAP            _IOR (R2_TYPE, 0x8, sizeof (struct r2k_data))
+#define IOCTL_GET_KERNEL_MAP            _IOR (R2_TYPE, 0x7, sizeof (struct r2k_data))
 
 #define READ_KERNEL_MEMORY		0x1
 #define WRITE_KERNEL_MEMORY		0x2
@@ -56,8 +55,7 @@ struct kernel_maps {
 #define WRITE_PROCESS_ADDR		0x4
 #define READ_PHYSICAL_ADDR		0x5
 #define WRITE_PHYSICAL_ADDR		0x6
-#define GET_PROC_MAPS			0x7
-#define GET_KERNEL_MAP			0x8
+#define GET_KERNEL_MAP			0x7
 
 const char *ioctl_str[] = 	{
 					"IOCTL_READ_KERNEL_MEMORY",

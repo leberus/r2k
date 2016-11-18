@@ -1,4 +1,5 @@
 #include <linux/mm.h>
+#include "x86_definitions.h"
 
 # define PAGE_IS_PRESENT(x)     (pte_val (x) & _PAGE_PRESENT)
 # define PAGE_IS_READONLY(x)    (pte_val (x) & _PAGE_RW)
