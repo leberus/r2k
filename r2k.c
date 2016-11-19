@@ -233,6 +233,7 @@ write_name:
 			if (*(char *)(name + i) == 0) {
 				break;
 			}
+			i += 1;
 		}
 		if (counter * sizeof (unsigned long) + i >= sizeof (data->vmareastruct)) {
 			return -ENOMEM;
