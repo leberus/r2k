@@ -11,6 +11,11 @@
 #define page_cache_release      put_page
 #endif
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,32)
+#define kmap_atomic(addr)	kmap_atomic(addr, KM_USER0)
+#define kunmap_atomic(addr)	kunmap_atomic(addr, KM_USER0)
+#endif
+
 #define ADDR_OFFSET(x)          (x & (~PAGE_MASK))
 
 #define IOCTL_READ_KERNEL_MEMORY        0x1
