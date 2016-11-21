@@ -3,14 +3,6 @@
 
 #include <linux/version.h>
 
-static char *r2_devname = "r2k";
-
-#define  R2_CLASS_NAME  "r2k"
-static struct device *r2k_dev_ph;
-static struct class *r2k_class;
-static struct cdev *r2k_dev;
-static dev_t devno;
-
 #define R2_TYPE 0x69
 
 /* Memory Part */

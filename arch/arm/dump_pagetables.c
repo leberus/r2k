@@ -16,6 +16,7 @@ static unsigned long start_vmalloc_allocated = 0;
 static unsigned long end_vmalloc_allocated = 0;
 
 static int entry = 0;
+static int n_entries = 0;
 static int ro;
 
 static int addr_from_kernel(unsigned long addr)
@@ -26,6 +27,24 @@ static int addr_from_kernel(unsigned long addr)
 static int addr_from_vmalloc(unsigned long addr)
 {
 	return (addr == VMALLOC_START || addr == MODULES_VADDR);
+}
+
+static int addr_from_fixmap(unsigned long addr)
+{
+	return addr == FIXADDR_START;
+}
+
+static int addr_vmalloc_fixmap (unsigned long addr)
+{
+	return (addr_from_vmalloc (addr) ||
+		addr_from_fixmap (addr));
+}
+
+static int addr_in_valid_range(unsigned long addr)
+{
+	return (addr_from_vmalloc (addr) ||
+//		addr_from_fixmap (addr)	||
+		addr_from_kernel (addr));
 }
 	
 static void note_page(struct pg_state *st, unsigned long addr, unsigned level, u64 val)
@@ -42,44 +61,42 @@ static void note_page(struct pg_state *st, unsigned long addr, unsigned level, u
                 st->current_prot = prot;
         } else if (prot != st->current_prot || level != st->level ||
                    addr >= st->marker[1].start_address) {
-                if (st->current_prot) {
+                if (st->current_prot &&
+			addr_in_valid_range (st->marker->start_address)) {
 			if(ro) {
-				if (addr_from_kernel(st->marker->start_address) ||
-				addr_from_vmalloc(st->marker->start_address)) {
-					st->k_map->kernel_maps_info.n_entries++;
-				}
-				
+				n_entries++;
 				goto skip_process;
 			}
 
-			int nr_pages = (addr - st->start_address) / PAGE_SIZE;
-			struct kernel_map_info *info = &st->k_map->map_info[entry];
+			if (entry < n_entries) {
+				int nr_pages = (addr - st->start_address) / PAGE_SIZE;
+				struct kernel_map_info *info = &st->k_map->map_info[entry];
 
-			info->start_addr = st->start_address;
-			info->end_addr = addr;
+				info->start_addr = st->start_address;
+				info->end_addr = addr;
 
-			if (nr_pages >= MAX_PHYS_ADDR)
-				nr_pages = MAX_PHYS_ADDR - 1;
-			info->n_pages = nr_pages;
+				if (nr_pages >= MAX_PHYS_ADDR)
+					nr_pages = MAX_PHYS_ADDR - 1;
+				info->n_pages = nr_pages;
 
-			if(st->marker->start_address == PAGE_OFFSET) {
-				info->phys_addr[0] = __pa (st->start_address);
-				info->phys_addr[1] = __pa (addr);
-				entry++;
-			} else if ((st->marker->start_address == VMALLOC_START ||
-				st->marker->start_address == MODULES_VADDR) &&
-				level == 4) {
-				int i;
-				unsigned long aux_addr;
-				for (i = 0, aux_addr = st->start_address; i < nr_pages; i++, aux_addr += PAGE_SIZE) {
-					unsigned long pfn = vmalloc_to_pfn ((void *) aux_addr);
-					if (!pfn_valid (pfn))
-						info->phys_addr[i] = 0;
-					else
-						info->phys_addr[i] = (pfn << PAGE_SHIFT);
+				if (addr_from_kernel (st->marker->start_address)) {
+					info->phys_addr[0] = __pa (st->start_address);
+					info->phys_addr[1] = __pa (addr);
+					entry++;
+				} else if (addr_from_vmalloc (st->marker->start_address) &&				
+						level == 4) {
+					int i;
+					unsigned long aux_addr;
+					for (i = 0, aux_addr = st->start_address; i < nr_pages; i++, aux_addr += PAGE_SIZE) {
+						unsigned long pfn = vmalloc_to_pfn ((void *) aux_addr);
+						if (!pfn_valid (pfn))
+								info->phys_addr[i] = 0;
+							else
+								info->phys_addr[i] = (pfn << PAGE_SHIFT);
+					}
+					entry++;
 				}
-				entry++;
-			} 
+			}
 		}
 						
 skip_process:
@@ -205,10 +222,19 @@ int pg_dump(struct r2k_map *k_map)
 	ro = 1;
 	walk_pgd (k_map);
 
-	size = k_map->kernel_maps_info.n_entries * sizeof (struct kernel_map_info);
+	pr_info ("n_entries: %d\n", n_entries);
+
+	size = n_entries * sizeof (struct kernel_map_info);
+	
 	k_map->map_info = vmalloc (size);
+	if (!k_map->map_info) {
+		pr_info ("vmalloc error\n");
+		return -ENOMEM;
+	}
+
 	size = PAGE_ALIGN (size);
 	k_map->kernel_maps_info.size = size;
+	k_map->kernel_maps_info.n_entries = n_entries;
 
 	start_vmalloc_allocated = (unsigned long)k_map->map_info;
 	end_vmalloc_allocated = start_vmalloc_allocated + size + PAGE_SIZE;
@@ -218,11 +244,10 @@ int pg_dump(struct r2k_map *k_map)
 		addr < end_vmalloc_allocated - PAGE_SIZE; addr += PAGE_SIZE) 
 		SetPageReserved (vmalloc_to_page ((void*)addr));
 	
-
 	ro = 0;
 	walk_pgd (k_map);
 
-	start_vmalloc_allocated = end_vmalloc_allocated = entry = 0;
+	start_vmalloc_allocated = end_vmalloc_allocated = n_entries = entry = 0;
 	return 0;
 }
 

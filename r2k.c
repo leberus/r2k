@@ -33,6 +33,16 @@
 		IOCTL_PROC_INFO			(reads information about process)
 */
 
+#define  R2_CLASS_NAME  "r2k"
+
+static char *r2_devname = "r2k";
+
+static struct device *r2k_dev_ph;
+static struct class *r2k_class;
+static struct cdev *r2k_dev;
+static dev_t devno;
+
+
 static struct r2k_map g_r2k_map = {
 	{0, 0},
 	NULL,
@@ -608,8 +618,10 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		ret = -1;
 		goto out;
 #else 
-		if (g_r2k_map.map_info) 
+		if (g_r2k_map.map_info) {
+			pr_info ("clean\n");
 			clean_mmap();
+		}
 
 		memset (&k_map, 0, sizeof (k_map));
 		ret = pg_dump (&k_map);
