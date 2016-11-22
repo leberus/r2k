@@ -18,11 +18,22 @@
  * of the License.
  */
 #include <asm/fixmap.h>
-#include <asm/kasan.h>
 #include <asm/memory.h>
 #include <asm/pgtable.h>
 #include <asm/pgtable-hwdef.h>
-//#include <asm/ptdump.h>
+#ifdef CONFIG_KASAN
+#include <asm/kasan.h>
+#endif
+
+#include <linux/version.h>
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(4,0,1)
+#define VA_START		(UL(0xffffffffffffffff) << VA_BITS)
+#define PCI_IO_SIZE		SZ_16M
+#define PCI_IO_END		(MODULES_VADDR - SZ_2M)
+#define PCI_IO_START		(PCI_IO_END - PCI_IO_SIZE)
+#define STRUCT_PAGE_MAX_SHIFT	6
+#define VMEMMAP_START		(PAGE_OFFSET - VMEMMAP_SIZE)
+#endif
 
 struct addr_marker {
 	unsigned long start_address;
@@ -109,11 +120,6 @@ static const struct prot_bits pte_bits[] = {
 		.set	= "NG",
 		.clear	= "  ",
 	}, {
-		.mask	= PTE_CONT,
-		.val	= PTE_CONT,
-		.set	= "CON",
-		.clear	= "   ",
-	}, {
 		.mask	= PTE_TABLE_BIT,
 		.val	= PTE_TABLE_BIT,
 		.set	= "   ",
@@ -155,19 +161,15 @@ struct pg_level {
 static struct pg_level pg_level[] = {
 	{
 	}, { /* pgd */
-		.name	= "PGD",
 		.bits	= pte_bits,
 		.num	= ARRAY_SIZE(pte_bits),
 	}, { /* pud */
-		.name	= (CONFIG_PGTABLE_LEVELS > 3) ? "PUD" : "PGD",
 		.bits	= pte_bits,
 		.num	= ARRAY_SIZE(pte_bits),
 	}, { /* pmd */
-		.name	= (CONFIG_PGTABLE_LEVELS > 2) ? "PMD" : "PGD",
 		.bits	= pte_bits,
 		.num	= ARRAY_SIZE(pte_bits),
 	}, { /* pte */
-		.name	= "PTE",
 		.bits	= pte_bits,
 		.num	= ARRAY_SIZE(pte_bits),
 	},

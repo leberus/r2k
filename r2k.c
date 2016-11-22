@@ -510,10 +510,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	case IOCTL_READ_PHYSICAL_ADDR:
 	case IOCTL_WRITE_PHYSICAL_ADDR:
 	{
-		unsigned long next_aligned_addr;
 		void __user *buffer_r;
-		int nr_pages;
-		int page_i;
 		int len;
 
 		m_transf = kmalloc (sizeof (struct r2k_memory_transf), GFP_KERNEL);
@@ -536,6 +533,10 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		len = m_transf->len;
 
 #if defined (CONFIG_X86_32) || defined (CONFIG_ARM)
+		int page_i;
+		int nr_pages;
+		unsigned long next_aligned_addr;
+
 		next_aligned_addr = get_next_aligned_addr (m_transf->addr);
 		nr_pages = get_nr_pages (m_transf->addr, next_aligned_addr, len);
 	
