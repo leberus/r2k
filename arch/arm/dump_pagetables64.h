@@ -128,7 +128,7 @@ static const struct prot_bits pte_bits[] = {
 		.mask	= PTE_CONT,
 		.val	= PTE_CONT,
 		.set	= "CON",
-		.clear	= "   ";
+		.clear	= "   ",
 	}, {
 		.mask	= PTE_TABLE_BIT,
 		.val	= PTE_TABLE_BIT,
