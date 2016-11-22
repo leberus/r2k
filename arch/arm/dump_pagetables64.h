@@ -84,7 +84,7 @@ struct prot_bits {
 };
 
 static const struct prot_bits pte_bits[] = {
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,6,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,6,0)
 	{
 		.mask	= PTE_VALID,
 		.val	= PTE_VALID,
@@ -123,7 +123,7 @@ static const struct prot_bits pte_bits[] = {
 		.set	= "NG",
 		.clear	= "  ",
 	},
-#if LINUX_VERSION_CODE < KERNEL_VERSION(4,4,0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4,4,0)
 	{
 		.mask	= PTE_CONT,
 		.val	= PTE_CONT,
