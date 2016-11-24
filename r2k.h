@@ -40,6 +40,7 @@ struct kernel_map_info {
 	unsigned long end_addr;
 	unsigned long phys_addr[MAX_PHYS_ADDR];
 	int n_pages;
+	int n_phys_addr;
 };
 
 struct kernel_maps {

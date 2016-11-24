@@ -82,6 +82,7 @@ static void note_page(struct pg_state *st, unsigned long addr, unsigned level, u
 				if (addr_from_kernel (st->marker->start_address)) {
 					info->phys_addr[0] = __pa (st->start_address);
 					info->phys_addr[1] = __pa (addr);
+					info->n_phys_addr = 2;
 					entry++;
 				} else if (addr_from_vmalloc (st->marker->start_address) &&				
 						level == 4) {
@@ -94,6 +95,7 @@ static void note_page(struct pg_state *st, unsigned long addr, unsigned level, u
 							else
 								info->phys_addr[i] = (pfn << PAGE_SHIFT);
 					}
+					info->n_phys_addr = info->n_pages;
 					entry++;
 				}
 			}
@@ -222,8 +224,6 @@ int pg_dump(struct r2k_map *k_map)
 	ro = 1;
 	walk_pgd (k_map);
 
-	pr_info ("n_entries: %d\n", n_entries);
-
 	size = n_entries * sizeof (struct kernel_map_info);
 	
 	k_map->map_info = vmalloc (size);
@@ -233,9 +233,6 @@ int pg_dump(struct r2k_map *k_map)
 	}
 
 	size = PAGE_ALIGN (size);
-	k_map->kernel_maps_info.size = size;
-	k_map->kernel_maps_info.n_entries = n_entries;
-
 	start_vmalloc_allocated = (unsigned long)k_map->map_info;
 	end_vmalloc_allocated = start_vmalloc_allocated + size + PAGE_SIZE;
 
@@ -246,6 +243,9 @@ int pg_dump(struct r2k_map *k_map)
 	
 	ro = 0;
 	walk_pgd (k_map);
+
+	k_map->kernel_maps_info.size = size;
+	k_map->kernel_maps_info.n_entries = entry;
 
 	start_vmalloc_allocated = end_vmalloc_allocated = n_entries = entry = 0;
 	return 0;
