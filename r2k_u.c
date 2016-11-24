@@ -32,6 +32,7 @@ struct kernel_map_info {
         unsigned long end_addr;
         unsigned long phys_addr[MAX_PHYS_ADDR];
         int n_pages;
+        int n_phys_addr;
 };
 
 struct kernel_maps {
@@ -284,12 +285,16 @@ int main(int argc, char **argv)
 		fprintf (stderr, "ioctl err: %s\n", strerror (errno));
 
 		int i, j;
+		long page_size = sysconf (_SC_PAGESIZE);
         	for (i = 0; i < map_data.n_entries ; i++) {
                 	struct kernel_map_info *in = &info[i];
                 	printf ("start_addr: 0x%lx\n", in->start_addr);
                 	printf ("end_addr: 0x%lx\n", in->end_addr);
-                	for(j = 0; j < in->n_pages; j++)
+			printf ("n_pages: %d (%ld Kbytes)\n", in->n_pages, (in->n_pages * page_size) / 1024);
+			printf ("n_phys_addr: %d\n", in->n_phys_addr);
+			for(j = 0; j < in->n_phys_addr; j++)
                         	printf("\tphys_addr: 0x%lx\n", in->phys_addr[j]);
+			printf ("\n\n");
 		}		
 
 		if (munmap (info, map_data.size) == -1)
