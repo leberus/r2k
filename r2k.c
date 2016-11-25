@@ -104,8 +104,14 @@ static int mmap_struct (struct file *filp, struct vm_area_struct *vma)
 	
 static int is_from_module_or_vmalloc (unsigned long addr)
 {
+	if (addr >= CONFIG_VECTORS_BASE &&
+		addr <= CONFIG_VECTORS_BASE + PAGE_SIZE * 2)
+		pr_info ("%x\n", virt_to_phys ((void *)addr));
+
 	if (is_vmalloc_addr ((void *)addr) ||
-		__module_address (addr))
+		__module_address (addr) ||
+		(addr >= CONFIG_VECTORS_BASE &&
+		addr <= CONFIG_VECTORS_BASE + PAGE_SIZE * 2))
 		return 1;
 	return 0;
 }
@@ -292,10 +298,6 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		}
 
 		len = m_transf->len;
-
-		pr_info ("%s: IOCTL_READ_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
-								m_transf->addr);
-
 		if (!check_kernel_addr (m_transf->addr)) {
 			pr_info ("%s: 0x%lx invalid addr\n", r2_devname, 
 								m_transf->addr);
@@ -330,7 +332,6 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 		ret = copy_from_user (m_transf, (void __user*)data_addr,
 					sizeof (struct r2k_memory_transf));
-
 		if (ret) {
 			pr_info ("%s: error - copy struct r2k_memory_transf\n",
 								r2_devname);
@@ -339,10 +340,6 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		}
 
 		len = m_transf->len;
-
-		pr_info ("%s: IOCTL_WRITE_KERNEL_MEMORY at 0x%lx\n", r2_devname, 
-								m_transf->addr);
-
 		if (!check_kernel_addr (m_transf->addr)) {
 			pr_info ("%s: 0x%lx invalid addr\n", r2_devname, 
 								m_transf->addr);
@@ -385,18 +382,12 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 		ret = copy_from_user (m_transf, (void __user*)data_addr,
 						sizeof (struct r2k_memory_transf));
-
 		if (ret) {
 			pr_info ("%s: error - copy struct r2k_memory_transf\n",
 								r2_devname);
 			ret = -EFAULT;
 			goto out;
 		}
-
-		pr_info ("%s: IOCTL_READ/WRITE_PROCESS_ADDR at 0x%lx" 
-						"from pid (%d) bytes (%ld)\n", 
-						r2_devname, m_transf->addr, 
-						m_transf->pid, m_transf->len);
 
 		buffer_r = m_transf->buff;
 		len = m_transf->len;
@@ -419,10 +410,6 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			goto out;
 		}
 			
-		pr_info ("%s: vma->vm_start - vma->vm_end, 0x%lx - 0x%lx\n", 
-						r2_devname, vma->vm_start, 
-								vma->vm_end);
-
 		if (m_transf->addr + len > vma->vm_end) {
 			pr_info ("%s: 0x%lx + %ld bytes goes beyond" 
 					"valid addresses. bytes recalculated to"
@@ -436,8 +423,6 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		
 		next_aligned_addr = get_next_aligned_addr (m_transf->addr);
 		nr_pages = get_nr_pages (m_transf->addr, next_aligned_addr, len);
-		pr_info ("%s: next_aligned_addr 0x%lx\n", r2_devname, 
-							next_aligned_addr);
 			
 		down_read (&task->mm->mmap_sem);
 		for (page_i = 0 ; page_i < nr_pages ; page_i++ ) {
@@ -465,8 +450,6 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			bytes = get_bytes_to_rw (m_transf->addr, len, 
 							next_aligned_addr);
 			kaddr = map_addr (pg, m_transf->addr);
-			pr_info ("%s: kaddr 0x%p\n", r2_devname, kaddr);
-			pr_info ("%s: reading %d bytes\n", r2_devname, bytes);
 
 			if (!addr_is_mapped ( (unsigned long)kaddr)) {
                         	pr_info ("%s: addr is not mapped," 
@@ -521,10 +504,13 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 
 		ret = copy_from_user (m_transf, (void __user*)data_addr,
 					sizeof (struct r2k_memory_transf));
+		if (ret) {
+			pr_info ("%s: Error copying structure from userspace\n");
+			ret = -EFAULT;
+			goto out;
+		}
 	
-		pr_info ("%s: IOCTL_READ/WRITE_PHYSICAL_ADDR on 0x%lx\n", r2_devname, 
-								m_transf->addr);
-		if (!pfn_valid (m_transf->addr >> PAGE_SHIFT)) {
+		if (!pfn_valid (__phys_to_pfn(m_transf->addr))) {
 			pr_info ("%s: 0x%lx out of range\n", r2_devname, m_transf->addr);
 			ret = -EFAULT;
 			goto out;
@@ -549,12 +535,8 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			bytes = get_bytes_to_rw (m_transf->addr, len, 
 							next_aligned_addr);
 
-			pg = pfn_to_page (m_transf->addr >> PAGE_SHIFT);
+			pg = pfn_to_page (__phys_to_pfn (m_transf->addr));
 			kaddr = map_addr (pg, m_transf->addr);
-			pr_info ("%s: kaddr: 0x%p\n", r2_devname, kaddr);
-			pr_info ("%s: kaddr - offset: 0x%p\n", r2_devname, 
-					kaddr - (m_transf->addr & (~PAGE_MASK)));
-			pr_info ("%s: reading %d bytes\n", r2_devname, bytes);
 
 			if (_IOC_NR (cmd) == IOCTL_READ_PHYSICAL_ADDR)
 				ret = copy_to_user (buffer_r, kaddr, bytes);
@@ -613,7 +595,6 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	}
 	case IOCTL_GET_KERNEL_MAP:
 	{
-		pr_info ("%s: IOCTL_GET_KERNEL_MAP\n", r2_devname);
 #if defined (CONFIG_X86_32) || defined (CONFIG_X86_64)
 		pr_info ("%s: IOCTL not supported on this arch\n", r2_devname);
 		ret = -1;
@@ -634,8 +615,6 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		g_r2k_map.kernel_maps_info.size = k_map.kernel_maps_info.size;
 		g_r2k_map.kernel_maps_info.n_entries = k_map.kernel_maps_info.n_entries;
 		g_r2k_map.map_info = k_map.map_info;
-	
-		pr_info ("Copying..\n");
 	
 		ret = copy_to_user ((void __user *)data_addr, &k_map.kernel_maps_info, sizeof (struct kernel_maps));
 		if (ret) {
