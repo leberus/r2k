@@ -104,15 +104,9 @@ static int mmap_struct (struct file *filp, struct vm_area_struct *vma)
 	
 static int is_from_module_or_vmalloc (unsigned long addr)
 {
-	if (addr >= CONFIG_VECTORS_BASE &&
-		addr <= CONFIG_VECTORS_BASE + PAGE_SIZE * 2)
-		pr_info ("%x\n", virt_to_phys ((void *)addr));
-
 	if (is_vmalloc_addr ((void *)addr) ||
-		__module_address (addr) ||
-		(addr >= CONFIG_VECTORS_BASE &&
-		addr <= CONFIG_VECTORS_BASE + PAGE_SIZE * 2))
-		return 1;
+		__module_address (addr))
+			return 1;
 	return 0;
 }
 
