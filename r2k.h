@@ -65,9 +65,15 @@ extern int pg_dump (struct r2k_map *k_map);
 #define IOCTL_READ_REG	0x8
 #define IOCTL_PROC_INFO	0x9
 
-#if defined(CONFIG_X86_32)
+#if defined(CONFIG_X86_32) || defined(CONFIG_X86_64)
+#include "arch/x86/x86_definitions.h"
+#else
+#include "arch/arm/arm_definitions.h"
+#endif
+
+#if defined(CONFIG_X86_32) || defined(CONFIG_ARM)
 #define reg_size 4
-#elif defined(CONFIG_X86_64)
+#elif defined(CONFIG_X86_64) || defined(CONFIG_ARM64)
 #define reg_size 8
 #endif
 
@@ -81,6 +87,12 @@ struct r2k_control_reg {
 #ifdef CONFIG_X86_64
         unsigned long cr8;
 #endif
+#elif  defined(CONFIG_ARM) || defined(CONFIG_ARM64)
+	unsigned long ttbr0;
+	unsigned long ttbr1;
+	unsigned long ttbcr;
+	unsigned long c1;
+	unsigned long c3;
 #endif
 };
 
