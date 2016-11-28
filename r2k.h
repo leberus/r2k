@@ -77,8 +77,9 @@ extern int pg_dump (struct r2k_map *k_map);
 #define reg_size 8
 #endif
 
-#if defined(CONFIG_X86_32) || defined(CONFIG_X86_64)
+
 struct r2k_control_reg {
+#if defined(CONFIG_X86_32) || defined(CONFIG_X86_64)
 	unsigned long cr0;
 	unsigned long cr1;
 	unsigned long cr2;
@@ -87,29 +88,19 @@ struct r2k_control_reg {
 #ifdef CONFIG_X86_64
 	unsigned long cr8;
 #endif
-};
-#endif
-
-
-#if defined(CONFIG_ARM) || defined(CONFIG_ARM_LPAE)
-struct r2k_control_reg {
+#elif defined (CONFIG_ARM)
 	unsigned long ttbr0;
 	unsigned long ttbr1;
 	unsigned long ttbcr;
 	unsigned long c1;
 	unsigned long c3;
-};
-#endif
-
-
-#if defined (CONFIG_ARM64)
-struct r2k_control_reg {
+#else
 	unsigned long sctlr_el1;
 	unsigned long ttbr0_el1;
 	unsigned long ttbr1_el1;
 	unsigned long tcr_el1;
-};
 #endif
+};
 
 
 //fails for kernel 3.15 x86

@@ -621,115 +621,33 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	}
 	case IOCTL_READ_REG:
 	{
-		struct r2k_control_reg __user *data = NULL;
-		unsigned long val;	
+		struct r2k_control_reg regs;
+		
 #if defined(CONFIG_X86_32) || defined(CONFIG_X86_64)
-		data = (struct r2k_control_reg __user *)data_addr;
-
-		val = native_read_cr0 ();
-		ret = copy_to_user ((unsigned long *)(&(data->cr0)), &val, reg_size);
-		if (ret) {
-			pr_info ("%s: copy_to_user0 failed\n", r2_devname);
-			ret = -EFAULT;
-			goto out;
-		}
-
-		val = native_read_cr2 ();
-		ret = copy_to_user ((unsigned long *)(&(data->cr2)), &val, reg_size);
-		if (ret) {
-			pr_info ("%s: copy_to_user2 failed\n", r2_devname);
-			ret = -EFAULT;
-			goto out;
-		}
-
-		val = native_read_cr3 ();
-		ret = copy_to_user ((unsigned long *)(&(data->cr3)), &val, reg_size);
-		if (ret) {
-			pr_info ("%s: copy_to_user3 failed\n", r2_devname);
-			ret = -EFAULT;
-			goto out;
-		}
-
-		val = native_read_cr4_safe ();
-		ret = copy_to_user ((unsigned long *)(&(data->cr4)), &val, reg_size);
-		if (ret) {
-			pr_info ("%s: copy_to_user4 failed\n", r2_devname);
-			ret = -EFAULT;
-			goto out;
-		}
+		regs.cr0; = native_read_cr0 ();
+		regs.cr2; = native_read_cr2 ();
+		regs.cr3; = native_read_cr3 ();
+		regs.cr4; = native_read_cr4_safe ();
 #ifdef CONFIG_X86_64
-		val = native_read_cr8 ();
-		ret = copy_to_user ((unsigned long *)(&(data->cr8)), &val, reg_size);
-		if (ret) {
-			pr_info ("%s: copy_to_user8 failed\n", r2_devname);
-			ret = -EFAULT;
-			goto out;
-		}
+		regs.cr8 = native_read_cr8 ();
 #endif
 #elif defined (CONFIG_ARM)
-		val = read_ttbr (0);
-		ret = copy_to_user ((unsigned long *)(&(data->ttbr0)), &val, reg_size);
-		if (ret) {
-			pr_info ("ERROR: copy_to_ttbr0 failed\n");
-			return -EINVAL;
-		}
-
-		val = read_ttbr (1);
-		ret = copy_to_user ((unsigned long *)(&(data->ttbr1)), &val, reg_size);
-		if (ret) {
-			pr_info ("ERROR: copy_to_ttbr1 failed\n");
-			return -EINVAL;
-		}
-	
-		val = read_ttbcr ();
-		ret = copy_to_user ((unsigned long *)(&(data->ttbcr)), &val, reg_size);
-		if (ret) {
-			pr_info ("ERROR: copy_to_c1 failed\n");
-			return -EINVAL;
-		}
-
-		val = read_c1 ();
-		ret = copy_to_user ((unsigned long *)(&(data->c1)), &val, reg_size);
-		if (ret) {
-			pr_info ("ERROR: copy_to_c1 failed\n");
-			return -EINVAL;
-		}
-
-		val = read_c3 ();
-		ret = copy_to_user ((unsigned long *)(&(data->c3)), &val, reg_size);
-		if (ret) {
-			pr_info ("ERROR: copy_to_c3 failed\n");
-			return -EINVAL;
-		}
+		regs.ttbr0 = read_ttbr (0);
+		regs.ttbr1 = read_ttbr (1);
+		regs.ttbcr = read_ttbcr ();
+		regs.c1 = read_c1 ();
+		regs.c3 = read_c3 ();
 #elif defined (CONFIG_ARM64)
-		val = read_ttbr0_EL1 ();
-		ret = copy_to_user ((unsigned long *)(&(data->ttbr0_el1)), &val, reg_size);
-		if (ret) {
-			pr_info ("ERROR: copy_to_ttbr0_el1 failed\n");
-			return -EINVAL;
-		}
-
-		val = read_ttbr1_EL1 ();
-		ret = copy_to_user ((unsigned long *)(&(data->ttbr1_el1)), &val, reg_size);
-		if (ret) {
-			pr_info ("ERROR: copy_to_ttbr1_el1 failed\n");
-			return -EINVAL;
-		}
-
-		val = read_tcr_EL1 ();
-		ret = copy_to_user ((unsigned long *)(&(data->tcr_el1)), &val, reg_size);
-		if (ret) {
-			pr_info ("ERROR: copy_to_tcr_el1 failed\n");
-			return -EINVAL;	
-		}
-	
-		val = read_sctlr_EL1 ();
-		ret = copy_to_user ((unsigned long *)(&(data->sctlr_el1)), &val, reg_size);
-		if (ret) {
-			pr_info ("ERROR: copy_to_c3 failed\n");
-			return -EINVAL;
-		}
+		regs.ttbr0_el1 = read_ttbr0_EL1 ();
+		regs.ttbr1_el1 = read_ttbr1_EL1 ();
+		regs.tcr_el1 = read_tcr_EL1 ();
+		regs.sctlr_el1 = read_sctlr_EL1 ();
 #endif
+		ret = copy_to_user ((void __user *)data_addr, &regs, sizeof (struct r2k_control_reg));
+		if (ret) {
+			pr_info ("%s: failed while copying\n", r2_devname);
+		}
+
 		break;
 	}
 	case IOCTL_PROC_INFO:
