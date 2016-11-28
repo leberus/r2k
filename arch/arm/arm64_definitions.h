@@ -13,7 +13,7 @@
 #define read_ttbr1_EL1()				\
 	({						\
 		unsigned long __dummy;			\
-		__asm__ ("mrs     %0, TTBR0_EL1"	\
+		__asm__ ("mrs     %0, TTBR1_EL1"	\
 			: "=r" (__dummy));		\
 		__dummy;				\
 	})	
