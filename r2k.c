@@ -624,10 +624,10 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		struct r2k_control_reg regs;
 		
 #if defined(CONFIG_X86_32) || defined(CONFIG_X86_64)
-		regs.cr0; = native_read_cr0 ();
-		regs.cr2; = native_read_cr2 ();
-		regs.cr3; = native_read_cr3 ();
-		regs.cr4; = native_read_cr4_safe ();
+		regs.cr0 = native_read_cr0 ();
+		regs.cr2 = native_read_cr2 ();
+		regs.cr3 = native_read_cr3 ();
+		regs.cr4 = native_read_cr4_safe ();
 #ifdef CONFIG_X86_64
 		regs.cr8 = native_read_cr8 ();
 #endif
