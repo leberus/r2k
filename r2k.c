@@ -504,7 +504,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			goto out;
 		}
 	
-		if (!pfn_valid (__phys_to_pfn(m_transf->addr))) {
+		if (!pfn_valid (m_transf->addr >> PAGE_SHIFT)) {
 			pr_info ("%s: 0x%lx out of range\n", r2_devname, m_transf->addr);
 			ret = -EFAULT;
 			goto out;
@@ -529,7 +529,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			bytes = get_bytes_to_rw (m_transf->addr, len, 
 							next_aligned_addr);
 
-			pg = pfn_to_page (__phys_to_pfn (m_transf->addr));
+			pg = pfn_to_page (m_transf->addr >> PAGE_SHIFT);
 			kaddr = map_addr (pg, m_transf->addr);
 
 			if (_IOC_NR (cmd) == IOCTL_READ_PHYSICAL_ADDR)
