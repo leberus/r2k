@@ -1,7 +1,6 @@
 #ifndef __ARM64_DEFINITIONS_H
 #define __ARM64_DEFINITIONS_H
 
-
 #define read_ttbr0_EL1()				\
 	({						\
 		unsigned long __dummy;			\
@@ -33,46 +32,6 @@
 			: "=r" (__dummy));              \
 		__dummy;                                \
         })	
-
-#define read_sctlr_EL2() 				\
-	({    						\
-		unsigned long __dummy;    		\
-		__asm__ ("mrs %0, SCTLR_EL2"		\
-			: "=r" (__dummy));    		\
-		__dummy;    				\
-	})
-
-#define read_sctlr_EL3()				\
-	({    						\
-		unsigned long __dummy;    		\
-		__asm__ ("mrs %0, SCTLR_EL3"    	\
-			"=r" (__dummy));    		\
-		__dummy;    				\
-	})
-
-#define read_ttbr0_EL3()				\
-	({						\
-		unsigned long __dummy;			\
-		__asm__ ("mrs %0, SCTLR_EL3":    	\
-			: "=r" (__dummy));		\
-		__dummy;				\
-	})
-
-#define read_tcr_EL2() 					\
-	({    						\
-		unsigned long __dummy;    		\
-		__asm__ ("mrs %0, TCR_EL2"    		\
-			: "=r" (__dummy));    		\
-		__dummy;    				\
-	})
-
-#define read_tcr_EL3() ({    				\
-		unsigned long __dummy;    		\
-		__asm__ ("mrs %0, TCR_EL3"    		\
-			: "=r" (__dummy));    		\
-		__dummy;    				\
-})
-
 
 static pgd_t *get_global_pgd (void)
 {
