@@ -19,7 +19,7 @@
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,16)) && defined (CONFIG_X86_32)
 #define native_read_cr4_safe() ({		\
 	unsigned long __dummy;			\
-	__asm__("1:movl %%cr4, %0           \n"	\
+	__asm__("1:mov %%cr4, %0           \n"	\
 		"2:                         \n"	\
 		".section __ex_table,\"a\"  \n"	\
 		".long 1b, 2b               \n"	\
@@ -41,7 +41,7 @@
 #define native_read_cr2() ({				\
 	unsigned long __dummy;				\
 	__asm__ __volatile__(				\
-			     "movl %%cr2, %0\n\t"	\
+			     "mov %%cr2, %0\n\t"	\
 			     :"=r" (__dummy));		\
 	__dummy;					\
 })
@@ -53,7 +53,7 @@
 #define native_read_cr3() ({		\
 	unsigned long __dummy;		\
 	__asm__ (			\
-		 "movl %%cr3, %0\n\t"	\
+		 "mov %%cr3, %0\n\t"	\
 		 :"=r" (__dummy));	\
 	__dummy;			\
 })
