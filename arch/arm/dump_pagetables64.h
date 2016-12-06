@@ -27,11 +27,9 @@
 
 #include <linux/version.h>
 
-//#if LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0)
-//#define VMEMMAP_SIZE		ALIGN((1UL << (VA_BITS - PAGE_SHIFT)) * sizeof(struct page), PUD_SIZE)
-//#endif
-
-#define VMEMMAP_SIZE 0x5
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0)
+#define VMEMMAP_SIZE		ALIGN((1UL << (VA_BITS - PAGE_SHIFT)) * sizeof(struct page), PUD_SIZE)
+#endif
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,0,0)
 #define VA_START		(UL(0xffffffffffffffff) << VA_BITS)
