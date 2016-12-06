@@ -8,4 +8,9 @@
 #endif
 
 #include "../../r2k.h"
+
+#ifndef pmd_sect
+#define pmd_sect(pmd)		(pmd_val (pmd) & PROT_SECT_DEFAULT)
+#endif
+
 #endif

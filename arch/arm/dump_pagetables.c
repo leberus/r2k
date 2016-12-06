@@ -161,7 +161,7 @@ static void walk_pud(struct pg_state *st, pgd_t *pgd, unsigned long start)
 
         for (i = 0; i < PTRS_PER_PUD; i++, pud++) {
                 addr = start + i * PUD_SIZE;
-#ifdef CONFIG_ARM64
+#if defined CONFIG_ARM64 && !defined (CONFIG_ANDROID)
 		if (pud_none (*pud) || pud_sect (*pud)) {
 			note_page (st, addr, 2, pud_val (*pud));
 		} else {
