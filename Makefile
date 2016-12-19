@@ -16,3 +16,9 @@ all:
 
 clean:
 	$(MAKE) -C /lib/modules/$(shell uname -r)/build M=$(PWD) clean
+
+install:
+	insmod r2kmod.ko
+
+uninstall:
+	rmmod r2kmod
