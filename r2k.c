@@ -591,7 +591,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 	{
 #if defined (CONFIG_X86_32) || defined (CONFIG_X86_64)
 		pr_info ("%s: IOCTL not supported on this arch\n", r2_devname);
-		ret = -1;
+		ret = -ENOSYS;
 		goto out;
 #else 
 		if (g_r2k_map.map_info) {
