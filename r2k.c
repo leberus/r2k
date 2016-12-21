@@ -748,7 +748,7 @@ static char *r2k_devnode (struct device *dev_ph, umode_t *mode)
 {
 	if (mode) {
 		if (dev_ph->devt == devno) 
-			*mode = 0644;
+			*mode = 0600;
 	}
 	return NULL;
 }
