@@ -1,5 +1,3 @@
-
-
 ### Reading from a linear address
 
 $ ./r2k -a 0x8469008 -i 3 -b 50 -p 13453 -o c
@@ -10,8 +8,8 @@ ioctl: pid (13453)
 Reading 50 bytes at 0x8469008 from pid (13453)
 ret: 0
 ioctl err: Success
-Got the state: addr: 0x846a000 - value: L o r e m   I p s u m   e s   s i m p l e m e n t e   e l   t e x t o   d e   r e l l e n o   d e   
-
+Got the state: addr: 0x846a000 - value: L o r e m   I p s u m   e s   s i m p l e m e n t e   e l   t e x t o   d e   r e l l e n o   d e
+   
 ### Write from a linear address
 
 $ ./r2k -a 0x8469009 -i 4 -w somethingelsewasherebefore -p 13453 -o c
@@ -111,6 +109,3 @@ Reading 8 bytes at 0x1004000 from pid (0)
 ret: 0
 ioctl err: Success
 Got the state: addr: 0x1004000 - value: 0x90 0x8d 0x74 0x26 0x00 0xe8 0xd6 0x62
-
-
-
