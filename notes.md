@@ -1,6 +1,6 @@
 ### Reading from a linear address
 
-$ ./r2k -a 0x8469008 -i 3 -b 50 -p 13453 -o c
+$ ./r2k -a 0x8469008 -i 3 -b 50 -p 13453 -o c<br>
 ioctl: IOCTL_READ_LINEAR_ADDR
 ioctl: addr 0x8469008
 ioctl: 50 bytes
