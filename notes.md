@@ -1,6 +1,7 @@
 ### Reading from a linear address
 
-$ ./r2k -a 0x8469008 -i 3 -b 50 -p 13453 -o c<br>
+<pre>
+$ ./r2k -a 0x8469008 -i 3 -b 50 -p 13453 -o c
 ioctl: IOCTL_READ_LINEAR_ADDR
 ioctl: addr 0x8469008
 ioctl: 50 bytes
@@ -9,6 +10,7 @@ Reading 50 bytes at 0x8469008 from pid (13453)
 ret: 0
 ioctl err: Success
 Got the state: addr: 0x846a000 - value: L o r e m   I p s u m   e s   s i m p l e m e n t e   e l   t e x t o   d e   r e l l e n o   d e
+</pre>
    
 ### Write from a linear address
 
