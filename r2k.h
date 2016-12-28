@@ -112,4 +112,40 @@ struct r2k_proc_info {
 };
 
 /**********************/
+
+
+
+/* Workaround for HARDENED_USERCOPY */
+#ifdef CONFIG_HARDENED_USERCOPY
+
+static inline int
+r2k_copy_from_user(void *dst, const void __user *src, unsigned size)
+{
+	memcpy(dst, src, size);
+	return 0;
+}
+
+static inline int
+r2k_copy_to_user(void *dst, const void __user *src, unsigned size)
+{
+	memcpy(dst, src, size);
+	return 0;
+}
+
+#else
+
+static inline int
+r2k_copy_from_user(void *dst, const void __user *src, unsigned size)
+{
+	return copy_from_user(dst, src, size);
+}
+
+static inline int
+r2k_copy_to_user(void *dst, const void __user *src, unsigned size)
+{
+	return copy_to_user(dst, src, size);
+}
+
+#endif /* CONFIG_HARDENED_USERCOPY */
+
 #endif
