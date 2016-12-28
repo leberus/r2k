@@ -2,6 +2,7 @@
 #define __R2K_H
 
 #include <linux/version.h>
+#include <asm/processor-flags.h>
 
 #define R2_TYPE 0x69
 
@@ -31,6 +32,7 @@ struct r2k_memory_transf {
         unsigned long addr;
         unsigned long len;
         void __user *buff;
+        bool wp;
 };
 
 #define MAX_PHYS_ADDR	128
@@ -115,13 +117,35 @@ struct r2k_proc_info {
 
 
 
+/* Disable write protect */
+static inline void disable_wp(void)
+{
+#if defined(CONFIG_X86_32) || defined(CONFIG_X86_64)
+    preempt_disable();
+    cr0_set_bits(X86_CR0_NW);
+#endif
+}
+
+
+static inline void enable_wp(void)
+{
+#if defined(CONFIG_X86_32) || defined(CONFIG_X86_64)
+    cr0_clear_bits(X86_CR0_NW);
+    preempt_enable();
+#endif
+}
+
+
 /* Workaround for HARDENED_USERCOPY */
 #ifdef CONFIG_HARDENED_USERCOPY
 
 static inline int
-r2k_copy_from_user(void *dst, const void __user *src, unsigned size)
+r2k_copy_from_user(void *dst, const void __user *src, unsigned size, bool wp)
 {
+    if (!wp) disable_wp();
 	memcpy(dst, src, size);
+    if (!wp) enable_wp();
+
 	return 0;
 }
 
@@ -135,9 +159,15 @@ r2k_copy_to_user(void *dst, const void __user *src, unsigned size)
 #else
 
 static inline int
-r2k_copy_from_user(void *dst, const void __user *src, unsigned size)
+r2k_copy_from_user(void *dst, const void __user *src, unsigned size, bool wp)
 {
-	return copy_from_user(dst, src, size);
+    int res;
+
+    if (!wp) disable_wp();
+	res = copy_from_user(dst, src, size);
+    if (!wp) enable_wp();
+
+    return res;
 }
 
 static inline int

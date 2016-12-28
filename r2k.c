@@ -341,14 +341,15 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			goto out;
 		}
 
-		if (!addr_is_writeable (m_transf->addr)) {
+		if (!addr_is_writeable(m_transf->addr) && m_transf->wp) {
 			pr_info ("%s: cannot write at addr 0x%lx\n", r2_devname,
 								m_transf->addr);
 			ret = -EPERM;
 			goto out;
 		}
 
-		ret = r2k_copy_from_user ((void *)m_transf->addr, m_transf->buff, len);
+		ret = r2k_copy_from_user((void *)m_transf->addr, m_transf->buff,
+								len, m_transf->wp);
 		if (ret) {
 			pr_info ("%s: copy_to_user failed\n", r2_devname);
 			ret = -EFAULT;
@@ -457,7 +458,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			if (_IOC_NR (cmd) == IOCTL_READ_PROCESS_ADDR)
 				ret = r2k_copy_to_user (buffer_r, kaddr, bytes);
 			else
-				ret = r2k_copy_from_user (kaddr, buffer_r,  bytes);
+				ret = r2k_copy_from_user(kaddr, buffer_r,  bytes, m_transf->wp);
 
 			if (ret) {
 				pr_info ("%s: copy_to_user failed\n",
@@ -534,7 +535,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			if (_IOC_NR (cmd) == IOCTL_READ_PHYSICAL_ADDR)
 				ret = r2k_copy_to_user (buffer_r, kaddr, bytes);
 			else {
-				if (!addr_is_writeable ( (unsigned long)kaddr)) {
+				if (!addr_is_writeable((unsigned long)kaddr) && m_transf->wp) {
 					pr_info ("%s: cannot write at addr "
 								"0x%lx\n",
 								r2_devname,
@@ -543,7 +544,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 					ret = -EPERM;
 					goto out;
 				}
-				ret = r2k_copy_from_user (kaddr, buffer_r, bytes);
+				ret = r2k_copy_from_user(kaddr, buffer_r, bytes, m_transf->wp);
 			}
 
 			if (ret) {
@@ -566,7 +567,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		if (_IOC_NR (cmd) == IOCTL_READ_PHYSICAL_ADDR)
 			ret = r2k_copy_to_user (buffer_r, kaddr, len);
 		else {
-			if (!addr_is_writeable ( (unsigned long)kaddr)) {
+			if (!addr_is_writeable((unsigned long)kaddr) && m_transf->wp) {
 				pr_info ("%s: cannot write at addr "
 							"0x%lx\n",
 							r2_devname,
@@ -574,7 +575,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 				ret = -EPERM;
 				goto out;
 			}
-			ret = r2k_copy_from_user (kaddr, buffer_r, len);
+			ret = r2k_copy_from_user(kaddr, buffer_r, len, m_transf->wp);
 		}
 
 		if (ret) {
