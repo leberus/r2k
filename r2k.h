@@ -122,7 +122,7 @@ static inline void disable_wp(void)
 {
 #if defined(CONFIG_X86_32) || defined(CONFIG_X86_64)
     preempt_disable();
-    cr0_set_bits(X86_CR0_NW);
+    cr0_set_bits(X86_CR0_WP);
 #endif
 }
 
@@ -130,7 +130,7 @@ static inline void disable_wp(void)
 static inline void enable_wp(void)
 {
 #if defined(CONFIG_X86_32) || defined(CONFIG_X86_64)
-    cr0_clear_bits(X86_CR0_NW);
+    cr0_clear_bits(X86_CR0_WP);
     preempt_enable();
 #endif
 }
