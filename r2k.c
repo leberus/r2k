@@ -12,6 +12,7 @@
 #include <linux/highmem.h>
 #include <linux/uaccess.h>
 #include <linux/vmalloc.h>
+#include <asm/io.h>
 #include "r2k.h"
 
 

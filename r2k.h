@@ -13,8 +13,11 @@
 #endif
 
 #if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,32)
-#define kmap_atomic(addr)	kmap_atomic(addr, KM_USER0)
-#define kunmap_atomic(addr)	kunmap_atomic(addr, KM_USER0)
+#   define r2kmap_atomic(addr)		kmap_atomic(addr, KM_USER0)
+#   define r2kunmap_atomic(addr)	kunmap_atomic(addr, KM_USER0)
+#else
+#   define r2kmap_atomic(addr)		kmap_atomic(addr)
+#   define r2kunmap_atomic(addr)	kunmap_atomic(addr)
 #endif
 
 #define ADDR_OFFSET(x)          (x & (~PAGE_MASK))
