@@ -155,12 +155,12 @@ static unsigned long get_next_aligned_addr (unsigned long addr)
 
 static inline void *map_addr (struct page *pg, unsigned long addr)
 {
-	return kmap_atomic (pg) + ADDR_OFFSET (addr);
+	return r2kmap_atomic (pg) + ADDR_OFFSET (addr);
 }
 
 static inline void unmap_addr (void *kaddr, unsigned long addr)
 {
-	kunmap_atomic (kaddr - ADDR_OFFSET (addr));
+	r2kunmap_atomic (kaddr - ADDR_OFFSET (addr));
 }
 
 static int write_vmareastruct (struct vm_area_struct *vma, struct mm_struct *mm,
