@@ -10,7 +10,6 @@
 #include <linux/sched.h>
 #include <linux/pagemap.h>
 #include <linux/highmem.h>
-#include <linux/uaccess.h>
 #include <linux/vmalloc.h>
 #include <asm/io.h>
 #include "r2k.h"
@@ -799,7 +798,7 @@ static int __init r2k_init (void)
 	}
 
 	pr_info ("%s: /dev/%s created\n", r2_devname, r2_devname);
-	pr_warning ("%s: WARNING - This module implies a security risk as it allows "
+	pr_info ("%s: WARNING - This module implies a security risk as it allows "
 				"direct read/write to the system memory. "
 				"Use it only under test systems "
 					"at your own risk", r2_devname);

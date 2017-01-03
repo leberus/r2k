@@ -2,7 +2,11 @@
 #define __R2K_H
 
 #include <linux/version.h>
+#include <linux/uaccess.h>
+
+#if defined (CONFIG_X86_32) || defined(CONFIG_X86_64)
 #include <asm/processor-flags.h>
+#endif
 
 #define R2_TYPE 0x69
 
