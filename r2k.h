@@ -11,8 +11,21 @@
 #define R2_TYPE 0x69
 
 /* Memory Part */
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4,6,0)
+#define get_user_pages_wrapper(tsk, mm, start, nr_pages, write, force, pages, vmas, locked) \
+	get_user_pages(tsk, mm, start, nr_pages, write, force, pages, vmas)
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4,6,0) && LINUX_VERSION_CODE < KERNEL_VERSION(4,9,0)
+#define get_user_pages_wrapper(tsk, mm, start, nr_pages, write, force, pages, vmas, locked) \
+	get_user_pages_remote(tsk, mm, start, nr_pages, write, force, pages, vmas)
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0) && LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
+#define get_user_pages_wrapper(tsk, mm, start, nr_pages, write, force, pages, vmas, locked) \
+	get_user_pages_remote(tsk, mm, start, nr_pages, write|force, pages, vmas)
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
+#define get_user_pages_wrapper(tsk, mm, start, nr_pages, write, force, pages, vmas, locked) \
+	get_user_pages_remote(tsk, mm, start, nr_pages, write|force, pages, vmas, locked)
+#endif
+
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,6,0)
-#define get_user_pages          get_user_pages_remote
 #define page_cache_release      put_page
 #endif
 
