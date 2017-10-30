@@ -99,6 +99,13 @@ extern int pg_dump (struct r2k_map *k_map);
 #define reg_size 8
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 13, 0)
+#define native_read_cr3	__native_read_cr3
+#endif
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 9, 0)
+#define native_read_cr4	native_read_cr4_safe
+#endif
 
 struct r2k_control_reg {
 #if defined(CONFIG_X86_32) || defined(CONFIG_X86_64)
