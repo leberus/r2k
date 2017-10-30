@@ -46,6 +46,7 @@ static struct device *r2k_dev_ph;
 static struct class *r2k_class;
 static struct cdev *r2k_dev;
 static dev_t devno;
+unsigned long stack_guard_gap = STACK_GUARD_GAP;
 
 static struct r2k_map g_r2k_map = {
 	{0, 0},

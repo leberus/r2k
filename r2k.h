@@ -9,6 +9,7 @@
 #endif
 
 #define R2_TYPE 0x69
+#define STACK_GUARD_GAP 250UL<<PAGE_SHIFT
 
 /* Memory Part */
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4,6,0)
