@@ -20,9 +20,11 @@
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(4,9,0) && LINUX_VERSION_CODE < KERNEL_VERSION(4,10,0)
 #define get_user_pages_wrapper(tsk, mm, start, nr_pages, write, force, pages, vmas, locked) \
 	get_user_pages_remote(tsk, mm, start, nr_pages, write|force, pages, vmas)
+	// write: FOLL_WRITE, force: FOLL_FORCE
 #elif LINUX_VERSION_CODE >= KERNEL_VERSION(4,10,0)
 #define get_user_pages_wrapper(tsk, mm, start, nr_pages, write, force, pages, vmas, locked) \
 	get_user_pages_remote(tsk, mm, start, nr_pages, write|force, pages, vmas, locked)
+	// write: FOLL_WRITE, force: FOLL_FORCE
 #endif
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4,6,0)
