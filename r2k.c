@@ -7,12 +7,17 @@
 #include <linux/page-flags.h>
 #include <linux/mm.h>
 #include <linux/slab.h>
-#include <linux/sched.h>
 #include <linux/pagemap.h>
 #include <linux/highmem.h>
 #include <linux/vmalloc.h>
 #include <asm/io.h>
 #include "r2k.h"
+
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 1)
+#include <linux/sched.h>
+#else
+#include <linux/sched/task.h>
+#endif
 
 
 /*
@@ -41,7 +46,7 @@ static struct device *r2k_dev_ph;
 static struct class *r2k_class;
 static struct cdev *r2k_dev;
 static dev_t devno;
-
+unsigned long stack_guard_gap = STACK_GUARD_GAP;
 
 static struct r2k_map g_r2k_map = {
 	{0, 0},
@@ -190,7 +195,7 @@ static int write_vmareastruct (struct vm_area_struct *vma, struct mm_struct *mm,
 
 	data->vmareastruct[counter]   = vma->vm_start;
 	data->vmareastruct[counter+1] = vma->vm_end;
-#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,38)
+#if LINUX_VERSION_CODE > KERNEL_VERSION(2,6,38) && LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 7)
 	if (stack_guard_page_start (vma, vma->vm_start)) {
 		data->vmareastruct[counter] += PAGE_SIZE;
 	}
@@ -203,6 +208,8 @@ static int write_vmareastruct (struct vm_area_struct *vma, struct mm_struct *mm,
 			data->vmareastruct[counter] += PAGE_SIZE;
 		}
 	}
+#elif LINUX_VERSION_CODE >= KERNEL_VERSION(4, 11, 7)
+	data->vmareastruct[counter] = vm_start_gap(vma);
 #endif
 	data->vmareastruct[counter+2] = vma->vm_flags;
 	data->vmareastruct[counter+3] = (unsigned long)pgoff;
@@ -426,11 +433,13 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 			void *kaddr;
 			int bytes;
 
-			ret = get_user_pages (task, task->mm, m_transf->addr, 1,
+			ret = get_user_pages_wrapper(task, task->mm, m_transf->addr, 1,
 									0,
 									0,
 									&pg,
+									NULL,
 									NULL);
+
 			if (!ret) {
 				pr_info ("%s: could not retrieve page"
 							"from pid (%d)\n",
@@ -627,7 +636,7 @@ static long io_ioctl (struct file *file, unsigned int cmd,
 		regs.cr0 = native_read_cr0 ();
 		regs.cr2 = native_read_cr2 ();
 		regs.cr3 = native_read_cr3 ();
-		regs.cr4 = native_read_cr4_safe ();
+		regs.cr4 = native_read_cr4 ();
 #ifdef CONFIG_X86_64
 		regs.cr8 = native_read_cr8 ();
 #endif
